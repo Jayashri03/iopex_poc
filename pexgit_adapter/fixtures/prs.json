@@ -1,0 +1,56 @@
+[
+  {
+    "pexgit_pr_id": "PR-101",
+    "title": "Add bulk discount support to payments",
+    "description": "Introduces apply_bulk_discount for large orders that scales the discount by a bulk factor.",
+    "author": "jsmith",
+    "source_branch": "feature/bulk-discount",
+    "target_branch": "main",
+    "status": "open",
+    "created_at": "2026-09-15T09:12:00",
+    "updated_at": "2026-09-16T14:40:00",
+    "files": [
+      {
+        "file_path": "app/payments.py",
+        "change_type": "modified",
+        "diff_text": "--- a/app/payments.py\n+++ b/app/payments.py\n@@ -8,3 +8,10 @@ def apply_discount(total, discount_percent):\n     discounted = total * (1 - discount_percent / 100)\n     return round_currency(discounted)\n+\n+\n+def apply_bulk_discount(total, discount_percent, bulk_factor):\n+    \"\"\"Apply a bulk discount that scales inversely with remaining percentage.\"\"\"\n+    scale = 100 / (100 - discount_percent)\n+    discounted = total * (1 - discount_percent / 100) * bulk_factor / scale\n+    return round_currency(discounted)\n"
+      }
+    ]
+  },
+  {
+    "pexgit_pr_id": "PR-102",
+    "title": "Fix rounding to always round half up",
+    "description": "Merged bugfix/rounding into main to standardize currency rounding.",
+    "author": "avarma",
+    "source_branch": "bugfix/rounding",
+    "target_branch": "main",
+    "status": "open",
+    "created_at": "2026-09-17T11:00:00",
+    "updated_at": "2026-09-18T08:22:00",
+    "files": [
+      {
+        "file_path": "app/utils.py",
+        "change_type": "modified",
+        "diff_text": "--- a/app/utils.py\n+++ b/app/utils.py\n@@ -1,3 +1,10 @@\n def round_currency(amount):\n-    \"\"\"Round amount to 2 decimal places using standard rounding.\"\"\"\n-    return round(amount, 2)\n+<<<<<<< HEAD\n+    \"\"\"Round amount to 2 decimal places using standard rounding.\"\"\"\n+    return round(amount, 2)\n+=======\n+    \"\"\"Round to 2 decimals, always rounding half up.\"\"\"\n+    from decimal import Decimal, ROUND_HALF_UP\n+    return float(Decimal(str(amount)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))\n+>>>>>>> bugfix/rounding\n"
+      }
+    ]
+  },
+  {
+    "pexgit_pr_id": "PR-103",
+    "title": "Add money_to_string helper for invoice export",
+    "description": "New helper to render an amount with currency code for the invoicing module.",
+    "author": "rpatel",
+    "source_branch": "chore/invoice-helper",
+    "target_branch": "main",
+    "status": "open",
+    "created_at": "2026-09-19T13:05:00",
+    "updated_at": "2026-09-20T10:15:00",
+    "files": [
+      {
+        "file_path": "app/utils.py",
+        "change_type": "modified",
+        "diff_text": "--- a/app/utils.py\n+++ b/app/utils.py\n@@ -9,3 +9,8 @@ def format_currency(amount, currency=\"USD\"):\n def clamp(value, low, high):\n     return max(low, min(value, high))\n+\n+\n+def money_to_string(amount, currency_code=\"USD\"):\n+    rounded = round(amount, 2)\n+    return f\"{currency_code} {rounded:.2f}\"\n"
+      }
+    ]
+  }
+]
