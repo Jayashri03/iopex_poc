@@ -86,15 +86,26 @@ rather than being bolted on here.
   input / observation for each step)
 
 Mock PRs and what they demonstrate:
-- `PR-101` — 4 commits; a bug introduced in commit 1 (`ZeroDivisionError` when `discount_percent
-  == 100`) is never actually fixed by the later commits, even though commit 3 looks like a fix.
-  Tests whether the agent tracks cumulative state instead of judging each commit alone.
+- `PR-101` — 6 commits against a small `app/` package (`payments.py`, `orders.py`, `config.py`,
+  `notifications.py`, `utils.py`, plus `tests/`). A bug introduced in commit 1
+  (`ZeroDivisionError` when `discount_percent == 100`) is never actually fixed by the later
+  commits, even though commit 3 looks like a fix. Two of the six commits are unrelated noise (a
+  type hint, a changelog entry) mixed in, like a real branch - not just the commits that matter.
+  Tests whether the agent tracks cumulative state and filters noise instead of judging each commit
+  in isolation.
 - `PR-102` — 2 commits; commit 1 is a clean fix, commit 2 is a merge that reintroduces unresolved
   `<<<<<<<` conflict markers. Tests that final state (not first impressions) drives the verdict.
-- `PR-103` — 2 commits; adds `money_to_string`, which duplicates the existing `format_currency`.
-  Tests the `search_repo` tool for catching duplication without RAG.
+- `PR-103` — 3 commits; adds `money_to_string`, which duplicates the existing `format_currency`,
+  with an unrelated TODO-comment commit mixed in between. Tests the `search_repo` tool for
+  catching duplication across files without RAG.
 - `PR-104` — 11 commits, deliberately large enough to exceed `MAX_COMMIT_CONTEXT_CHARS`. Tests the
   phase-1 guard: review is skipped and `review_status` is set to `needs_batching`.
+
+None of this is special-cased in the agent's code - `agent/tools.py` and `agent/reasoning.py`
+contain no logic that knows about `discount_percent`, `money_to_string`, or any other fixture
+specifics. Every review comment in the output comes from the Ollama chat model's own
+`final_answer` JSON; there is no fallback or stub path if Ollama is unreachable, so a review can
+only be produced by an actual model call (see `agent/llm.py`).
 
 ## Re-running after changing the agent or fixtures
 

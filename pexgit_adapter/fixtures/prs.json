@@ -2,7 +2,7 @@
   {
     "pexgit_pr_id": "PR-101",
     "title": "Add bulk discount support to payments",
-    "description": "Introduces apply_bulk_discount for large orders that scales the discount by a bulk factor. Developed over 4 small commits.",
+    "description": "Introduces apply_bulk_discount for large orders that scales the discount by a bulk factor. Fixes PROJ-482.",
     "author": "jsmith",
     "source_branch": "feature/bulk-discount",
     "target_branch": "main",
@@ -37,6 +37,19 @@
         ]
       },
       {
+        "commit_sha": "b7c8d9e",
+        "author": "jsmith",
+        "message": "Add type hint to Order.subtotal",
+        "committed_at": "2026-09-14T18:05:00",
+        "files": [
+          {
+            "file_path": "app/orders.py",
+            "change_type": "modified",
+            "diff_text": "@@ -8,3 +8,3 @@ class Order:\n-    def subtotal(self):\n+    def subtotal(self) -> float:\n         total = 0\n"
+          }
+        ]
+      },
+      {
         "commit_sha": "c3d4e5f",
         "author": "jsmith",
         "message": "Add negative discount validation",
@@ -46,6 +59,19 @@
             "file_path": "app/payments.py",
             "change_type": "modified",
             "diff_text": "@@ -14,2 +14,4 @@ def apply_bulk_discount(total, discount_percent, bulk_factor):\n     \"\"\"Apply a bulk discount that scales inversely with remaining percentage.\"\"\"\n+    if discount_percent < 0:\n+        raise ValueError(\"discount_percent cannot be negative\")\n     scale = 100 / (100 - discount_percent)\n"
+          }
+        ]
+      },
+      {
+        "commit_sha": "c9d0e1f",
+        "author": "jsmith",
+        "message": "Update CHANGELOG for v1.4.0",
+        "committed_at": "2026-09-15T10:20:00",
+        "files": [
+          {
+            "file_path": "CHANGELOG.md",
+            "change_type": "modified",
+            "diff_text": "@@ -1,3 +1,5 @@\n # Changelog\n+## v1.4.0\n+- Add bulk discount support for large orders\n \n ## v1.3.0\n"
           }
         ]
       },
@@ -124,6 +150,19 @@
             "file_path": "app/utils.py",
             "change_type": "modified",
             "diff_text": "@@ -9,3 +9,8 @@ def format_currency(amount, currency=\"USD\"):\n def clamp(value, low, high):\n     return max(low, min(value, high))\n+\n+\n+def money_to_string(amount, currency_code=\"USD\"):\n+    rounded = round(amount, 2)\n+    return f\"{currency_code} {rounded:.2f}\"\n"
+          }
+        ]
+      },
+      {
+        "commit_sha": "29a3b4c",
+        "author": "rpatel",
+        "message": "Add TODO for SMS support in notifications",
+        "committed_at": "2026-09-18T11:15:00",
+        "files": [
+          {
+            "file_path": "app/notifications.py",
+            "change_type": "modified",
+            "diff_text": "@@ -2,3 +2,4 @@ from app.utils import format_currency\n def send_receipt(customer_email, amount, currency=\"USD\"):\n     \"\"\"Placeholder for the real email/SMS integration.\"\"\"\n+    # TODO: add SMS channel once the notifications-service contract is finalized\n     return f\"Receipt sent to {customer_email} for {format_currency(amount, currency)}\"\n"
           }
         ]
       },
