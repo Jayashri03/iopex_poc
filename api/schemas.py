@@ -16,10 +16,19 @@ class PRListItem(BaseModel):
     updated_at: datetime
 
 
-class PRFileOut(BaseModel):
+class CommitFileOut(BaseModel):
     file_path: str
     change_type: str
     diff_text: str
+
+
+class CommitOut(BaseModel):
+    commit_sha: str
+    commit_order: int
+    author: str
+    message: str
+    committed_at: datetime
+    files: list[CommitFileOut]
 
 
 class MergeConflictOut(BaseModel):
@@ -34,6 +43,7 @@ class ReviewCommentOut(BaseModel):
     category: str
     comment: str
     suggested_fix: str | None
+    introduced_in_commit: str | None
 
 
 class ReasoningStepOut(BaseModel):
@@ -58,7 +68,7 @@ class PRDetailOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     reviewed_at: datetime | None
-    files: list[PRFileOut]
+    commits: list[CommitOut]
     merge_conflicts: list[MergeConflictOut]
     review_comments: list[ReviewCommentOut]
     reasoning_steps: list[ReasoningStepOut]

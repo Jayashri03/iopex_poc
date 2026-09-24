@@ -2,6 +2,7 @@ import json
 import re
 from dataclasses import dataclass, field
 
+from agent.context_builder import build_commit_context
 from agent.llm import chat
 
 SYSTEM_PROMPT_TEMPLATE = """You are a senior code reviewer agent for pull requests.
@@ -13,7 +14,7 @@ Schema for every turn:
 {{
   "thought": "your reasoning about what to do next",
   "action": "<one of: {tool_names}, final_answer>",
-  "action_input": <object - tool arguments, or the final result if action is final_answer>
+  "action_input": <object - tool arguments (or {{}} for no-argument tools), or the final result if action is final_answer>
 }}
 
 Available tools:
@@ -22,7 +23,7 @@ Available tools:
 When you have enough information, set "action" to "final_answer" and
 "action_input" to:
 {{
-  "summary": "1-3 sentence overall assessment of the PR",
+  "summary": "1-3 sentence overall assessment of the PR, covering the cumulative effect of all its commits",
   "review_comments": [
     {{
       "file_path": "...",
@@ -30,33 +31,40 @@ When you have enough information, set "action" to "final_answer" and
       "severity": "high | medium | low",
       "category": "bug | merge_conflict | duplication | optimization | style | validation",
       "comment": "what's wrong and why it matters",
-      "suggested_fix": "concrete suggested change"
+      "suggested_fix": "concrete suggested change",
+      "introduced_in_commit": "the commit_sha that introduced (or failed to fix) this issue"
     }}
   ],
   "merge_conflicts": [
-    {{"file_path": "...", "detail": "what's unresolved, e.g. leftover <<<<<<< markers"}}
+    {{"file_path": "...", "detail": "what's unresolved, e.g. leftover <<<<<<< markers", "introduced_in_commit": "commit_sha"}}
   ]
 }}
 
 Rules:
-- Use tools to check for code duplication and to pull in context the diff
-  hunk alone doesn't show, before writing your final answer.
-- If a diff contains unresolved merge conflict markers (<<<<<<<, =======,
-  >>>>>>>), always report it under merge_conflicts AND as a high severity
-  review_comment - such a file will not run as-is.
+- You are given every commit in this PR, in order, with its own diff. Judge
+  the PR by the CUMULATIVE state after all commits are applied, not any
+  single commit in isolation. A bug introduced in an early commit is still
+  a bug even if a later commit looks unrelated or only partially addresses
+  it - trace whether it was actually fixed by the final commit.
+- Use tools to check for code duplication and to pull in context the diffs
+  don't show, before writing your final answer.
+- If any commit's diff contains unresolved merge conflict markers (<<<<<<<,
+  =======, >>>>>>>) that are not removed by a later commit, always report it
+  under merge_conflicts AND as a high severity review_comment - such a file
+  will not run as-is.
 - Only call final_answer once, as your last turn.
 - You have at most {max_steps} turns before you must give a final_answer.
 """
 
-PR_CONTEXT_TEMPLATE = """Review this pull request.
+PR_CONTEXT_TEMPLATE = """Review this pull request. It has {commit_count} commit(s), applied in order.
 
 Title: {title}
 Description: {description}
 Author: {author}
 Source branch -> Target branch: {source_branch} -> {target_branch}
 
-Changed files and diffs:
-{diffs}
+Commits (in order):
+{commits}
 """
 
 
@@ -104,16 +112,15 @@ class ReviewAgent:
             tool_descriptions=tool_descriptions,
             max_steps=self.max_steps,
         )
-        diffs = "\n\n".join(
-            f"--- {f.file_path} ({f.change_type}) ---\n{f.diff_text}" for f in pr.files
-        )
+        commit_context = build_commit_context(pr)
         user_prompt = PR_CONTEXT_TEMPLATE.format(
+            commit_count=commit_context.commit_count,
             title=pr.title,
             description=pr.description,
             author=pr.author,
             source_branch=pr.source_branch,
             target_branch=pr.target_branch,
-            diffs=diffs,
+            commits=commit_context.text,
         )
 
         messages = [
@@ -151,10 +158,10 @@ class ReviewAgent:
             thought = parsed.get("thought", "")
             action = parsed.get("action", "")
             action_input = parsed.get("action_input", {})
+            if not isinstance(action_input, dict):
+                action_input = {}
 
             if action == "final_answer":
-                if not isinstance(action_input, dict):
-                    action_input = {}
                 steps.append(
                     ReasoningStep(
                         step_number=step_number,

@@ -14,10 +14,16 @@ class Config:
 
     OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
     OLLAMA_CHAT_MODEL = os.getenv("OLLAMA_CHAT_MODEL", "qwen2.5-coder:7b")
-    OLLAMA_EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
 
     AGENT_MAX_STEPS = int(os.getenv("AGENT_MAX_STEPS", "6"))
-    RAG_TOP_K = int(os.getenv("RAG_TOP_K", "5"))
+
+    # Phase 1 assumption: a PR's full commit history (messages + diffs) is
+    # passed to the agent in one shot, no RAG/retrieval. This is a rough
+    # chars-not-tokens budget for that commit context specifically (it does
+    # not include the system prompt or tool-loop overhead). PRs that exceed
+    # it are flagged as needing batching/aggregation instead of silently
+    # truncated - see agent/context_builder.py and README "Phase 2".
+    MAX_COMMIT_CONTEXT_CHARS = int(os.getenv("MAX_COMMIT_CONTEXT_CHARS", "6000"))
 
 
 config = Config()

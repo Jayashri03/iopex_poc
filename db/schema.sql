@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS prs (
     source_branch VARCHAR(255) NOT NULL,
     target_branch VARCHAR(255) NOT NULL,
     status VARCHAR(32) NOT NULL DEFAULT 'open',
+    -- pending | reviewed | needs_batching (commit history too large for the
+    -- current single-shot context window, see agent/context_builder.py) | error
     review_status VARCHAR(32) NOT NULL DEFAULT 'pending',
     created_at DATETIME NOT NULL,
     updated_at DATETIME NOT NULL,
@@ -19,13 +21,25 @@ CREATE TABLE IF NOT EXISTS prs (
     review_summary TEXT
 );
 
-CREATE TABLE IF NOT EXISTS pr_files (
+CREATE TABLE IF NOT EXISTS commits (
     id INT PRIMARY KEY AUTO_INCREMENT,
     pr_id INT NOT NULL,
+    commit_sha VARCHAR(64) NOT NULL,
+    commit_order INT NOT NULL,
+    author VARCHAR(128) NOT NULL,
+    message TEXT NOT NULL,
+    committed_at DATETIME NOT NULL,
+    FOREIGN KEY (pr_id) REFERENCES prs(id) ON DELETE CASCADE,
+    UNIQUE KEY uniq_pr_commit (pr_id, commit_sha)
+);
+
+CREATE TABLE IF NOT EXISTS commit_files (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    commit_id INT NOT NULL,
     file_path VARCHAR(512) NOT NULL,
     change_type VARCHAR(16) NOT NULL DEFAULT 'modified',
     diff_text MEDIUMTEXT NOT NULL,
-    FOREIGN KEY (pr_id) REFERENCES prs(id) ON DELETE CASCADE
+    FOREIGN KEY (commit_id) REFERENCES commits(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS merge_conflicts (
@@ -45,6 +59,7 @@ CREATE TABLE IF NOT EXISTS review_comments (
     category VARCHAR(32) NOT NULL DEFAULT 'bug',
     comment TEXT NOT NULL,
     suggested_fix TEXT,
+    introduced_in_commit VARCHAR(64),
     FOREIGN KEY (pr_id) REFERENCES prs(id) ON DELETE CASCADE
 );
 
@@ -58,14 +73,4 @@ CREATE TABLE IF NOT EXISTS reasoning_steps (
     observation MEDIUMTEXT,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (pr_id) REFERENCES prs(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS code_chunks (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    file_path VARCHAR(512) NOT NULL,
-    chunk_index INT NOT NULL,
-    content MEDIUMTEXT NOT NULL,
-    embedding JSON NOT NULL,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY uniq_file_chunk (file_path, chunk_index)
 );

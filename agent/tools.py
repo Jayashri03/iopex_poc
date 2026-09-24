@@ -1,7 +1,9 @@
-from code_rag.retriever import search_code
+import re
+
 from pexgit_adapter.base import PexGitAdapter
 
 MAX_OBSERVATION_CHARS = 2000
+MAX_MATCHES = 20
 
 
 def _truncate(text: str) -> str:
@@ -11,18 +13,16 @@ def _truncate(text: str) -> str:
 def build_tools(adapter: PexGitAdapter) -> dict:
     """
     Returns {tool_name: {"description": str, "func": callable(**kwargs) -> str}}.
-    Descriptions are injected verbatim into the agent's system prompt, so the
-    model knows what each tool does and what arguments it takes.
+    Descriptions are injected verbatim into the agent's system prompt.
+
+    No RAG/embeddings here - the PR's own commit history is already in the
+    prompt. These tools exist only to pull in codebase context the diffs
+    alone don't show (e.g. "is there already a similar function?", "what
+    does the rest of this file look like around the hunk?").
     """
 
-    def search_code_tool(query: str, top_k: int = 5) -> str:
-        results = search_code(query, top_k=top_k)
-        if not results:
-            return "No matching code found."
-        lines = []
-        for r in results:
-            lines.append(f"[{r.file_path}#chunk{r.chunk_index} score={r.score:.3f}]\n{r.content}")
-        return _truncate("\n\n".join(lines))
+    def list_files_tool() -> str:
+        return "\n".join(adapter.list_repo_files())
 
     def get_file_tool(file_path: str) -> str:
         try:
@@ -30,22 +30,50 @@ def build_tools(adapter: PexGitAdapter) -> dict:
         except FileNotFoundError:
             return f"File not found: {file_path}"
 
+    def search_repo_tool(pattern: str) -> str:
+        try:
+            regex = re.compile(pattern, re.IGNORECASE)
+        except re.error as exc:
+            return f"Invalid regex '{pattern}': {exc}"
+
+        matches = []
+        for file_path in adapter.list_repo_files():
+            content = adapter.get_file_content(file_path)
+            for line_no, line in enumerate(content.splitlines(), start=1):
+                if regex.search(line):
+                    matches.append(f"{file_path}:{line_no}: {line.strip()}")
+                    if len(matches) >= MAX_MATCHES:
+                        break
+            if len(matches) >= MAX_MATCHES:
+                break
+
+        if not matches:
+            return f"No matches for pattern '{pattern}'."
+        return _truncate("\n".join(matches))
+
     return {
-        "search_code": {
+        "list_files": {
             "description": (
-                "Semantic search over the current codebase (RAG). Args: "
-                "{\"query\": string, \"top_k\": int (optional)}. Use this to find "
-                "similar/existing functions, check for duplication, or pull in "
-                "context the diff alone doesn't show."
+                "List every file path in the target branch's codebase. Args: {} "
+                "(no arguments). Use this to see what's available before deciding "
+                "what to search or read."
             ),
-            "func": search_code_tool,
+            "func": list_files_tool,
+        },
+        "search_repo": {
+            "description": (
+                "Plain-text/regex search (like grep) across every file in the "
+                "codebase. Args: {\"pattern\": string}. Use this to check whether "
+                "similar logic already exists elsewhere (duplication) or to find "
+                "where a function/symbol touched by the PR is used or defined."
+            ),
+            "func": search_repo_tool,
         },
         "get_file": {
             "description": (
-                "Fetch the full current content of a file on the target branch. "
+                "Fetch the full current content of one file on the target branch. "
                 "Args: {\"file_path\": string}. Use this when a diff hunk needs "
-                "surrounding context (e.g. checking existing validation in a function "
-                "being extended)."
+                "surrounding context that isn't in the hunk itself."
             ),
             "func": get_file_tool,
         },

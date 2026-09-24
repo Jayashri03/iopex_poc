@@ -3,9 +3,10 @@ import json
 from fastapi import FastAPI, HTTPException
 
 from api.schemas import (
+    CommitFileOut,
+    CommitOut,
     MergeConflictOut,
     PRDetailOut,
-    PRFileOut,
     PRListItem,
     ReasoningStepOut,
     ReviewCommentOut,
@@ -41,10 +42,32 @@ def get_pr_detail(pexgit_pr_id: str):
         pr_id = pr["id"]
 
         cursor.execute(
-            "SELECT file_path, change_type, diff_text FROM pr_files WHERE pr_id = %s",
+            """
+            SELECT id, commit_sha, commit_order, author, message, committed_at
+            FROM commits WHERE pr_id = %s
+            ORDER BY commit_order ASC
+            """,
             (pr_id,),
         )
-        files = cursor.fetchall()
+        commit_rows = cursor.fetchall()
+
+        commits = []
+        for c in commit_rows:
+            cursor.execute(
+                "SELECT file_path, change_type, diff_text FROM commit_files WHERE commit_id = %s",
+                (c["id"],),
+            )
+            files = cursor.fetchall()
+            commits.append(
+                CommitOut(
+                    commit_sha=c["commit_sha"],
+                    commit_order=c["commit_order"],
+                    author=c["author"],
+                    message=c["message"],
+                    committed_at=c["committed_at"],
+                    files=[CommitFileOut(**f) for f in files],
+                )
+            )
 
         cursor.execute(
             "SELECT file_path, detail FROM merge_conflicts WHERE pr_id = %s",
@@ -54,7 +77,7 @@ def get_pr_detail(pexgit_pr_id: str):
 
         cursor.execute(
             """
-            SELECT file_path, line_hint, severity, category, comment, suggested_fix
+            SELECT file_path, line_hint, severity, category, comment, suggested_fix, introduced_in_commit
             FROM review_comments WHERE pr_id = %s
             ORDER BY FIELD(severity, 'high', 'medium', 'low')
             """,
@@ -91,7 +114,7 @@ def get_pr_detail(pexgit_pr_id: str):
         created_at=pr["created_at"],
         updated_at=pr["updated_at"],
         reviewed_at=pr["reviewed_at"],
-        files=[PRFileOut(**f) for f in files],
+        commits=commits,
         merge_conflicts=[MergeConflictOut(**c) for c in conflicts],
         review_comments=[ReviewCommentOut(**c) for c in comments],
         reasoning_steps=[ReasoningStepOut(**s) for s in steps],

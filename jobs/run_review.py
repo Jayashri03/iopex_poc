@@ -1,7 +1,12 @@
 """
 Offline job: run the multistep review agent over every open PR and persist
-PR metadata, files, review comments, merge conflicts, and the full reasoning
-trace into MySQL. The API layer only ever reads from these tables.
+PR metadata, commits, review comments, merge conflicts, and the full
+reasoning trace into MySQL. The API layer only ever reads from these tables.
+
+PRs whose full commit history doesn't fit the phase-1 single-shot context
+budget (see agent/context_builder.py) are marked review_status='needs_batching'
+instead of reviewed - they need the phase 2 batch+aggregate strategy, not
+built yet.
 """
 import json
 import pathlib
@@ -10,6 +15,7 @@ from datetime import datetime
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
+from agent.context_builder import CommitContextTooLarge  # noqa: E402
 from agent.review_agent import review_pr  # noqa: E402
 from db.connection import get_cursor  # noqa: E402
 from pexgit_adapter.mock_adapter import MockPexGitAdapter  # noqa: E402
@@ -43,14 +49,26 @@ def _upsert_pr(cursor, pr) -> int:
         pr_id = cursor.lastrowid
 
     # Clear anything from a previous run of this job for this PR.
-    for table in ("pr_files", "merge_conflicts", "review_comments", "reasoning_steps"):
+    for table in ("commits", "merge_conflicts", "review_comments", "reasoning_steps"):
         cursor.execute(f"DELETE FROM {table} WHERE pr_id = %s", (pr_id,))
 
-    for f in pr.files:
+    for order, commit in enumerate(pr.commits):
         cursor.execute(
-            "INSERT INTO pr_files (pr_id, file_path, change_type, diff_text) VALUES (%s, %s, %s, %s)",
-            (pr_id, f.file_path, f.change_type, f.diff_text),
+            """
+            INSERT INTO commits (pr_id, commit_sha, commit_order, author, message, committed_at)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            """,
+            (pr_id, commit.commit_sha, order, commit.author, commit.message, commit.committed_at),
         )
+        commit_id = cursor.lastrowid
+        for f in commit.files:
+            cursor.execute(
+                """
+                INSERT INTO commit_files (commit_id, file_path, change_type, diff_text)
+                VALUES (%s, %s, %s, %s)
+                """,
+                (commit_id, f.file_path, f.change_type, f.diff_text),
+            )
 
     return pr_id
 
@@ -59,8 +77,9 @@ def _persist_result(cursor, pr_id: int, result):
     for c in result.review_comments:
         cursor.execute(
             """
-            INSERT INTO review_comments (pr_id, file_path, line_hint, severity, category, comment, suggested_fix)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO review_comments
+                (pr_id, file_path, line_hint, severity, category, comment, suggested_fix, introduced_in_commit)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 pr_id,
@@ -70,6 +89,7 @@ def _persist_result(cursor, pr_id: int, result):
                 c.get("category", "bug"),
                 c.get("comment", ""),
                 c.get("suggested_fix", ""),
+                c.get("introduced_in_commit", ""),
             ),
         )
 
@@ -106,12 +126,21 @@ def main():
 
     for pr_summary in adapter.list_prs():
         pr = adapter.get_pr(pr_summary.pexgit_pr_id)
-        print(f"Reviewing {pr.pexgit_pr_id}: {pr.title}")
+        print(f"Reviewing {pr.pexgit_pr_id}: {pr.title} ({len(pr.commits)} commits)")
 
         with get_cursor(commit=True) as cursor:
             pr_id = _upsert_pr(cursor, pr)
 
-        result = review_pr(pr, adapter)
+        try:
+            result = review_pr(pr, adapter)
+        except CommitContextTooLarge as exc:
+            print(f"  -> SKIPPED: {exc}")
+            with get_cursor(commit=True) as cursor:
+                cursor.execute(
+                    "UPDATE prs SET review_status='needs_batching', review_summary=%s WHERE id=%s",
+                    (str(exc), pr_id),
+                )
+            continue
 
         with get_cursor(commit=True) as cursor:
             _persist_result(cursor, pr_id, result)

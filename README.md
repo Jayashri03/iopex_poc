@@ -1,20 +1,21 @@
 # PR Review Agent (PoC)
 
-An agent that reviews pull requests: analyzes diffs, searches the codebase
-for context (code-RAG), reasons in multiple steps, and generates review
-comments, merge-conflict flags, and a visible reasoning trace. Built for an
-internal pexgit setup, but the pexgit connection is mocked here so the focus
-stays on the agent/RAG/review pipeline.
+An agent that reviews pull requests: reads every commit in the PR, reasons
+in multiple steps (optionally using tools to pull in extra codebase
+context), and generates review comments, merge-conflict flags, and a
+visible reasoning trace. Built for an internal pexgit setup, but the pexgit
+connection is mocked here so the focus stays on the agent/review pipeline.
 
 Built only with: VS Code, Git, MySQL, Ollama, Python 3.12.
 
 ## Architecture
 
 ```
-pexgit_adapter/   interface + mock implementation (fixture PRs + a small sample codebase)
-code_rag/         chunk -> embed (Ollama) -> store in MySQL -> cosine-similarity search in Python
-agent/            multistep ReAct-style loop: LLM (Ollama) decides to call a tool or give a final answer
-jobs/             offline scripts: build_index.py (index codebase), run_review.py (review all PRs -> MySQL)
+pexgit_adapter/   interface + mock implementation (fixture PRs, each with several commits)
+agent/            context_builder (assembles + size-guards the commit history),
+                   tools (list_files / search_repo / get_file - plain grep, no RAG),
+                   reasoning (multistep ReAct loop), review_agent (entrypoint)
+jobs/             offline script: run_review.py reviews all PRs -> MySQL
 api/              FastAPI app, read-only, serves what jobs/run_review.py already wrote
 db/               schema.sql + connection pooling
 ```
@@ -24,37 +25,78 @@ the agent per PR and persists results (comments, conflicts, full reasoning
 trace) to MySQL. The API only reads. This keeps `GET /prs/{id}` fast and
 lets you iterate on the agent without touching the API.
 
-Swapping in the real pexgit integration later means implementing
-`pexgit_adapter/base.py`'s `PexGitAdapter` interface against pexgit's API -
-nothing in `code_rag/`, `agent/`, `jobs/`, or `api/` needs to change.
+## Why no RAG
+
+The agent isn't retrieving snippets of the codebase to guess at what changed
+- it's given the PR's **entire commit history** (every commit's message and
+diff, in order) directly in the prompt. That's what makes cross-commit
+reasoning possible: an issue introduced in commit 2 and only partially
+addressed in commit 5 is visible to the model in one pass, because it can
+see both commits at once. A RAG/chunking approach would only surface
+whichever fragment happened to score highest on a similarity search, which
+is the wrong tool for "did this PR actually fix what it claims to fix."
+
+The agent still has tools (`list_files`, `search_repo`, `get_file` in
+`agent/tools.py`), but they're plain listing/grep/read over the mock repo,
+used only to answer questions the diffs alone can't (e.g. "does something
+like this already exist elsewhere?"). No embeddings, no vector store.
+
+## Phase 1 vs. Phase 2: PRs with a lot of commits
+
+Passing the full commit history to the model only works if it fits the
+context window. Phase 1 (this PoC) makes that assumption explicit instead
+of hiding it:
+
+- `agent/context_builder.py` builds the commit-history block and checks its
+  size against `MAX_COMMIT_CONTEXT_CHARS` (`.env`, default 6000 chars).
+- If a PR's commits are within budget, the full history goes straight into
+  the prompt - see `PR-101`/`PR-102`/`PR-103` in the fixtures.
+- If a PR is over budget, `build_commit_context` raises
+  `CommitContextTooLarge` rather than silently truncating (which would
+  quietly hide the exact cross-commit issues this design exists to catch).
+  `jobs/run_review.py` catches that and marks the PR `review_status =
+  'needs_batching'` instead of crashing the job - see `PR-104`, a
+  deliberately oversized 10-commit fixture that exercises this path.
+
+**Phase 2** (not built yet) is where large PRs actually get handled: batch
+commits into groups, review each group, then run a second aggregation pass
+over the per-batch summaries to catch issues that span batches. That
+aggregation step is the hard part - it's exactly what determines how much
+cross-commit context survives batching - so it deserves its own design
+rather than being bolted on here.
 
 ## Setup
 
 1. `python -m venv .venv && .venv\Scripts\activate`
 2. `pip install -r requirements.txt`
 3. `copy .env.example .env` and adjust MySQL credentials.
-4. Pull the Ollama models referenced in `.env`:
+4. Pull the Ollama chat model referenced in `.env`:
    ```
    ollama pull qwen2.5-coder:7b
-   ollama pull nomic-embed-text
    ```
 5. Create the database and tables: `python scripts/init_db.py`
-6. Build the code-RAG index over the sample codebase: `python jobs/build_index.py`
-7. Run the agent over all mock PRs and persist results: `python jobs/run_review.py`
-8. Start the API: `uvicorn api.main:app --reload`
+6. Run the agent over all mock PRs and persist results: `python jobs/run_review.py`
+7. Start the API: `uvicorn api.main:app --reload`
 
 ## Endpoints
 
 - `GET /prs` — list all PRs (author, source/target branch, status, review status, timestamps)
-- `GET /prs/{pexgit_pr_id}` — full detail: diffs, merge conflicts, review comments, and the agent's
-  full step-by-step reasoning trace (thought / action / tool input / observation for each step)
+- `GET /prs/{pexgit_pr_id}` — full detail: every commit (with its own diffs), merge conflicts,
+  review comments, and the agent's full step-by-step reasoning trace (thought / action / tool
+  input / observation for each step)
 
-Example: `GET /prs/PR-102` shows a PR with an unresolved merge conflict left in the diff.
-`GET /prs/PR-101` shows a PR with a real bug (division by zero when `discount_percent == 100`).
-`GET /prs/PR-103` shows a PR the agent should flag as duplicating existing logic, found via
-`search_code` over the indexed codebase.
+Mock PRs and what they demonstrate:
+- `PR-101` — 4 commits; a bug introduced in commit 1 (`ZeroDivisionError` when `discount_percent
+  == 100`) is never actually fixed by the later commits, even though commit 3 looks like a fix.
+  Tests whether the agent tracks cumulative state instead of judging each commit alone.
+- `PR-102` — 2 commits; commit 1 is a clean fix, commit 2 is a merge that reintroduces unresolved
+  `<<<<<<<` conflict markers. Tests that final state (not first impressions) drives the verdict.
+- `PR-103` — 2 commits; adds `money_to_string`, which duplicates the existing `format_currency`.
+  Tests the `search_repo` tool for catching duplication without RAG.
+- `PR-104` — 11 commits, deliberately large enough to exceed `MAX_COMMIT_CONTEXT_CHARS`. Tests the
+  phase-1 guard: review is skipped and `review_status` is set to `needs_batching`.
 
 ## Re-running after changing the agent or fixtures
 
 `jobs/run_review.py` is idempotent per PR (`pexgit_pr_id`) - re-run it any time after changing
-the agent prompt, tools, or fixture data, and it overwrites that PR's comments/conflicts/reasoning.
+the agent prompt, tools, or fixture data, and it overwrites that PR's commits/comments/conflicts/reasoning.
