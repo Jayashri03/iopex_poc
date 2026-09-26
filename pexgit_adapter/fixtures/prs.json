@@ -11,7 +11,7 @@
     "updated_at": "2026-09-15T11:45:00",
     "commits": [
       {
-        "commit_sha": "a1b2c3d",
+        "commit_sha": "0ce72f3",
         "author": "jsmith",
         "message": "Add initial apply_bulk_discount function",
         "committed_at": "2026-09-14T10:00:00",
@@ -19,12 +19,12 @@
           {
             "file_path": "app/payments.py",
             "change_type": "modified",
-            "diff_text": "@@ -8,3 +8,9 @@ def apply_discount(total, discount_percent):\n     discounted = total * (1 - discount_percent / 100)\n     return round_currency(discounted)\n+\n+\n+def apply_bulk_discount(total, discount_percent, bulk_factor):\n+    scale = 100 / (100 - discount_percent)\n+    discounted = total * (1 - discount_percent / 100) * bulk_factor / scale\n+    return round_currency(discounted)\n"
+            "diff_text": "diff --git a/app/payments.py b/app/payments.py\nindex 05114f9..fff3747 100644\n--- a/app/payments.py\n+++ b/app/payments.py\n@@ -8,3 +8,9 @@ def apply_discount(total, discount_percent):\n     discounted = total * (1 - discount_percent / 100)\n     return round_currency(discounted)\n+\n+\n+def apply_bulk_discount(total, discount_percent, bulk_factor):\n+    scale = 100 / (100 - discount_percent)\n+    discounted = total * (1 - discount_percent / 100) * bulk_factor / scale\n+    return round_currency(discounted)\n"
           }
         ]
       },
       {
-        "commit_sha": "b2c3d4e",
+        "commit_sha": "3b56e8c",
         "author": "jsmith",
         "message": "Add docstring to apply_bulk_discount",
         "committed_at": "2026-09-14T15:30:00",
@@ -32,12 +32,12 @@
           {
             "file_path": "app/payments.py",
             "change_type": "modified",
-            "diff_text": "@@ -13,2 +13,3 @@ def apply_bulk_discount(total, discount_percent, bulk_factor):\n+    \"\"\"Apply a bulk discount that scales inversely with remaining percentage.\"\"\"\n     scale = 100 / (100 - discount_percent)\n"
+            "diff_text": "diff --git a/app/payments.py b/app/payments.py\nindex bee7b41..9dc83ec 100644\n--- a/app/payments.py\n+++ b/app/payments.py\n@@ -13,2 +13,3 @@ def apply_bulk_discount(total, discount_percent, bulk_factor):\n+    \"\"\"Apply a bulk discount that scales inversely with remaining percentage.\"\"\"\n     scale = 100 / (100 - discount_percent)\n"
           }
         ]
       },
       {
-        "commit_sha": "b7c8d9e",
+        "commit_sha": "08428b6",
         "author": "jsmith",
         "message": "Add type hint to Order.subtotal",
         "committed_at": "2026-09-14T18:05:00",
@@ -45,12 +45,12 @@
           {
             "file_path": "app/orders.py",
             "change_type": "modified",
-            "diff_text": "@@ -8,3 +8,3 @@ class Order:\n-    def subtotal(self):\n+    def subtotal(self) -> float:\n         total = 0\n"
+            "diff_text": "diff --git a/app/orders.py b/app/orders.py\nindex af336ad..4f5290f 100644\n--- a/app/orders.py\n+++ b/app/orders.py\n@@ -8,3 +8,3 @@ class Order:\n-    def subtotal(self):\n+    def subtotal(self) -> float:\n         total = 0\n"
           }
         ]
       },
       {
-        "commit_sha": "c3d4e5f",
+        "commit_sha": "c424017",
         "author": "jsmith",
         "message": "Add negative discount validation",
         "committed_at": "2026-09-15T09:10:00",
@@ -58,12 +58,12 @@
           {
             "file_path": "app/payments.py",
             "change_type": "modified",
-            "diff_text": "@@ -14,2 +14,4 @@ def apply_bulk_discount(total, discount_percent, bulk_factor):\n     \"\"\"Apply a bulk discount that scales inversely with remaining percentage.\"\"\"\n+    if discount_percent < 0:\n+        raise ValueError(\"discount_percent cannot be negative\")\n     scale = 100 / (100 - discount_percent)\n"
+            "diff_text": "diff --git a/app/payments.py b/app/payments.py\nindex 7f8f4c9..612c242 100644\n--- a/app/payments.py\n+++ b/app/payments.py\n@@ -14,2 +14,4 @@ def apply_bulk_discount(total, discount_percent, bulk_factor):\n     \"\"\"Apply a bulk discount that scales inversely with remaining percentage.\"\"\"\n+    if discount_percent < 0:\n+        raise ValueError(\"discount_percent cannot be negative\")\n     scale = 100 / (100 - discount_percent)\n"
           }
         ]
       },
       {
-        "commit_sha": "c9d0e1f",
+        "commit_sha": "968751b",
         "author": "jsmith",
         "message": "Update CHANGELOG for v1.4.0",
         "committed_at": "2026-09-15T10:20:00",
@@ -71,12 +71,12 @@
           {
             "file_path": "CHANGELOG.md",
             "change_type": "modified",
-            "diff_text": "@@ -1,3 +1,5 @@\n # Changelog\n+## v1.4.0\n+- Add bulk discount support for large orders\n \n ## v1.3.0\n"
+            "diff_text": "diff --git a/CHANGELOG.md b/CHANGELOG.md\nindex fc2bfdc..9fe46dd 100644\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,3 +1,5 @@\n # Changelog\n+## v1.4.0\n+- Add bulk discount support for large orders\n \n ## v1.3.0\n"
           }
         ]
       },
       {
-        "commit_sha": "d4e5f6a",
+        "commit_sha": "eec0853",
         "author": "jsmith",
         "message": "Rename scale variable for clarity",
         "committed_at": "2026-09-15T11:45:00",
@@ -84,7 +84,7 @@
           {
             "file_path": "app/payments.py",
             "change_type": "modified",
-            "diff_text": "@@ -16,4 +16,4 @@ def apply_bulk_discount(total, discount_percent, bulk_factor):\n-    scale = 100 / (100 - discount_percent)\n-    discounted = total * (1 - discount_percent / 100) * bulk_factor / scale\n+    inverse_scale = 100 / (100 - discount_percent)\n+    discounted = total * (1 - discount_percent / 100) * bulk_factor / inverse_scale\n     return round_currency(discounted)\n"
+            "diff_text": "diff --git a/app/payments.py b/app/payments.py\nindex 5a83343..009669d 100644\n--- a/app/payments.py\n+++ b/app/payments.py\n@@ -16,4 +16,4 @@ def apply_bulk_discount(total, discount_percent, bulk_factor):\n-    scale = 100 / (100 - discount_percent)\n-    discounted = total * (1 - discount_percent / 100) * bulk_factor / scale\n+    inverse_scale = 100 / (100 - discount_percent)\n+    discounted = total * (1 - discount_percent / 100) * bulk_factor / inverse_scale\n     return round_currency(discounted)\n"
           }
         ]
       }
@@ -102,7 +102,7 @@
     "updated_at": "2026-09-16T16:20:00",
     "commits": [
       {
-        "commit_sha": "e5f6a7b",
+        "commit_sha": "f2b8046",
         "author": "avarma",
         "message": "Switch round_currency to Decimal half-up rounding",
         "committed_at": "2026-09-16T08:00:00",
@@ -110,12 +110,12 @@
           {
             "file_path": "app/utils.py",
             "change_type": "modified",
-            "diff_text": "@@ -1,3 +1,4 @@\n def round_currency(amount):\n-    \"\"\"Round amount to 2 decimal places using standard rounding.\"\"\"\n-    return round(amount, 2)\n+    \"\"\"Round to 2 decimals, always rounding half up.\"\"\"\n+    from decimal import Decimal, ROUND_HALF_UP\n+    return float(Decimal(str(amount)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))\n"
+            "diff_text": "diff --git a/app/utils.py b/app/utils.py\nindex cabcc5b..329b9cd 100644\n--- a/app/utils.py\n+++ b/app/utils.py\n@@ -1,3 +1,4 @@\n def round_currency(amount):\n-    \"\"\"Round amount to 2 decimal places using standard rounding.\"\"\"\n-    return round(amount, 2)\n+    \"\"\"Round to 2 decimals, always rounding half up.\"\"\"\n+    from decimal import Decimal, ROUND_HALF_UP\n+    return float(Decimal(str(amount)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))\n"
           }
         ]
       },
       {
-        "commit_sha": "f6a7b8c",
+        "commit_sha": "d925008",
         "author": "avarma",
         "message": "Merge branch 'main' into bugfix/rounding",
         "committed_at": "2026-09-16T16:20:00",
@@ -123,7 +123,7 @@
           {
             "file_path": "app/utils.py",
             "change_type": "modified",
-            "diff_text": "@@ -1,4 +1,10 @@\n def round_currency(amount):\n+<<<<<<< HEAD\n+    \"\"\"Round amount to 2 decimal places using standard rounding.\"\"\"\n+    return round(amount, 2)\n+=======\n     \"\"\"Round to 2 decimals, always rounding half up.\"\"\"\n     from decimal import Decimal, ROUND_HALF_UP\n     return float(Decimal(str(amount)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))\n+>>>>>>> bugfix/rounding\n"
+            "diff_text": "diff --git a/app/utils.py b/app/utils.py\nindex f4a153e..b41a7b0 100644\n--- a/app/utils.py\n+++ b/app/utils.py\n@@ -1,4 +1,10 @@\n def round_currency(amount):\n+<<<<<<< HEAD\n+    \"\"\"Round amount to 2 decimal places using standard rounding.\"\"\"\n+    return round(amount, 2)\n+=======\n     \"\"\"Round to 2 decimals, always rounding half up.\"\"\"\n     from decimal import Decimal, ROUND_HALF_UP\n     return float(Decimal(str(amount)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))\n+>>>>>>> bugfix/rounding\n"
           }
         ]
       }
@@ -141,7 +141,7 @@
     "updated_at": "2026-09-18T13:40:00",
     "commits": [
       {
-        "commit_sha": "071829a",
+        "commit_sha": "5a92dfd",
         "author": "rpatel",
         "message": "Add money_to_string helper",
         "committed_at": "2026-09-18T09:00:00",
@@ -149,12 +149,12 @@
           {
             "file_path": "app/utils.py",
             "change_type": "modified",
-            "diff_text": "@@ -9,3 +9,8 @@ def format_currency(amount, currency=\"USD\"):\n def clamp(value, low, high):\n     return max(low, min(value, high))\n+\n+\n+def money_to_string(amount, currency_code=\"USD\"):\n+    rounded = round(amount, 2)\n+    return f\"{currency_code} {rounded:.2f}\"\n"
+            "diff_text": "diff --git a/app/utils.py b/app/utils.py\nindex b97b3ae..fa6ca20 100644\n--- a/app/utils.py\n+++ b/app/utils.py\n@@ -9,3 +9,8 @@ def format_currency(amount, currency=\"USD\"):\n def clamp(value, low, high):\n     return max(low, min(value, high))\n+\n+\n+def money_to_string(amount, currency_code=\"USD\"):\n+    rounded = round(amount, 2)\n+    return f\"{currency_code} {rounded:.2f}\"\n"
           }
         ]
       },
       {
-        "commit_sha": "29a3b4c",
+        "commit_sha": "e2aa370",
         "author": "rpatel",
         "message": "Add TODO for SMS support in notifications",
         "committed_at": "2026-09-18T11:15:00",
@@ -162,12 +162,12 @@
           {
             "file_path": "app/notifications.py",
             "change_type": "modified",
-            "diff_text": "@@ -2,3 +2,4 @@ from app.utils import format_currency\n def send_receipt(customer_email, amount, currency=\"USD\"):\n     \"\"\"Placeholder for the real email/SMS integration.\"\"\"\n+    # TODO: add SMS channel once the notifications-service contract is finalized\n     return f\"Receipt sent to {customer_email} for {format_currency(amount, currency)}\"\n"
+            "diff_text": "diff --git a/app/notifications.py b/app/notifications.py\nindex 3cb6b9c..9c1529d 100644\n--- a/app/notifications.py\n+++ b/app/notifications.py\n@@ -2,3 +2,4 @@ from app.utils import format_currency\n def send_receipt(customer_email, amount, currency=\"USD\"):\n     \"\"\"Placeholder for the real email/SMS integration.\"\"\"\n+    # TODO: add SMS channel once the notifications-service contract is finalized\n     return f\"Receipt sent to {customer_email} for {format_currency(amount, currency)}\"\n"
           }
         ]
       },
       {
-        "commit_sha": "182930b",
+        "commit_sha": "61a2b38",
         "author": "rpatel",
         "message": "Add invoice export using money_to_string",
         "committed_at": "2026-09-18T13:40:00",
@@ -175,7 +175,7 @@
           {
             "file_path": "app/invoice.py",
             "change_type": "added",
-            "diff_text": "@@ -0,0 +1,5 @@\n+from app.utils import money_to_string\n+\n+\n+def render_invoice_line(item_name, amount):\n+    return f\"{item_name}: {money_to_string(amount)}\"\n"
+            "diff_text": "diff --git a/app/invoice.py b/app/invoice.py\nnew file mode 100644\nindex 0000000..2680bdb\n--- /dev/null\n+++ b/app/invoice.py\n@@ -0,0 +1,5 @@\n+from app.utils import money_to_string\n+\n+\n+def render_invoice_line(item_name, amount):\n+    return f\"{item_name}: {money_to_string(amount)}\"\n"
           }
         ]
       }
@@ -193,7 +193,7 @@
     "updated_at": "2026-09-22T17:10:00",
     "commits": [
       {
-        "commit_sha": "1a1a1a1",
+        "commit_sha": "cd605cf",
         "author": "ktran",
         "message": "Add retry_payment skeleton",
         "committed_at": "2026-09-19T09:00:00",
@@ -201,12 +201,12 @@
           {
             "file_path": "app/payment_retry.py",
             "change_type": "added",
-            "diff_text": "@@ -0,0 +1,10 @@\n+def retry_payment(payment_fn, max_attempts=3):\n+    attempts = 0\n+    while attempts < max_attempts:\n+        try:\n+            return payment_fn()\n+        except Exception:\n+            attempts += 1\n+    raise RuntimeError(\"payment failed after retries\")\n"
+            "diff_text": "diff --git a/app/payment_retry.py b/app/payment_retry.py\nnew file mode 100644\nindex 0000000..e2eb1f1\n--- /dev/null\n+++ b/app/payment_retry.py\n@@ -0,0 +1,10 @@\n+def retry_payment(payment_fn, max_attempts=3):\n+    attempts = 0\n+    while attempts < max_attempts:\n+        try:\n+            return payment_fn()\n+        except Exception:\n+            attempts += 1\n+    raise RuntimeError(\"payment failed after retries\")\n"
           }
         ]
       },
       {
-        "commit_sha": "2b2b2b2",
+        "commit_sha": "75df5fb",
         "author": "ktran",
         "message": "Add exponential backoff between attempts",
         "committed_at": "2026-09-19T11:30:00",
@@ -214,12 +214,12 @@
           {
             "file_path": "app/payment_retry.py",
             "change_type": "modified",
-            "diff_text": "@@ -1,3 +1,6 @@\n+import time\n+\n+\n def retry_payment(payment_fn, max_attempts=3):\n     attempts = 0\n     while attempts < max_attempts:\n@@ -6,4 +9,6 @@ def retry_payment(payment_fn, max_attempts=3):\n         except Exception:\n             attempts += 1\n+            delay = 0.5 * (2 ** attempts)\n+            time.sleep(delay)\n     raise RuntimeError(\"payment failed after retries\")\n"
+            "diff_text": "diff --git a/app/payment_retry.py b/app/payment_retry.py\nindex d72bb8d..4304c22 100644\n--- a/app/payment_retry.py\n+++ b/app/payment_retry.py\n@@ -1,3 +1,6 @@\n+import time\n+\n+\n def retry_payment(payment_fn, max_attempts=3):\n     attempts = 0\n     while attempts < max_attempts:\n@@ -6,4 +9,6 @@ def retry_payment(payment_fn, max_attempts=3):\n         except Exception:\n             attempts += 1\n+            delay = 0.5 * (2 ** attempts)\n+            time.sleep(delay)\n     raise RuntimeError(\"payment failed after retries\")\n"
           }
         ]
       },
       {
-        "commit_sha": "3c3c3c3",
+        "commit_sha": "2cdbf3f",
         "author": "ktran",
         "message": "Add random jitter to backoff delay",
         "committed_at": "2026-09-19T15:00:00",
@@ -227,12 +227,12 @@
           {
             "file_path": "app/payment_retry.py",
             "change_type": "modified",
-            "diff_text": "@@ -1,4 +1,5 @@\n import time\n+import random\n \n \n def retry_payment(payment_fn, max_attempts=3):\n@@ -10,3 +11,4 @@ def retry_payment(payment_fn, max_attempts=3):\n             attempts += 1\n             delay = 0.5 * (2 ** attempts)\n+            delay += random.uniform(0, 0.25)\n             time.sleep(delay)\n"
+            "diff_text": "diff --git a/app/payment_retry.py b/app/payment_retry.py\nindex 2d35af0..a88d9fb 100644\n--- a/app/payment_retry.py\n+++ b/app/payment_retry.py\n@@ -1,4 +1,5 @@\n import time\n+import random\n \n \n def retry_payment(payment_fn, max_attempts=3):\n@@ -10,3 +11,4 @@ def retry_payment(payment_fn, max_attempts=3):\n             attempts += 1\n             delay = 0.5 * (2 ** attempts)\n+            delay += random.uniform(0, 0.25)\n             time.sleep(delay)\n"
           }
         ]
       },
       {
-        "commit_sha": "4d4d4d4",
+        "commit_sha": "62a303f",
         "author": "ktran",
         "message": "Add CircuitBreaker class with open/closed state",
         "committed_at": "2026-09-20T09:15:00",
@@ -240,12 +240,12 @@
           {
             "file_path": "app/payment_retry.py",
             "change_type": "modified",
-            "diff_text": "@@ -1,5 +1,20 @@\n import time\n import random\n \n \n+class CircuitBreaker:\n+    def __init__(self, failure_threshold=5):\n+        self.failure_threshold = failure_threshold\n+        self.failure_count = 0\n+        self.state = \"closed\"\n+\n+    def record_failure(self):\n+        self.failure_count += 1\n+        if self.failure_count >= self.failure_threshold:\n+            self.state = \"open\"\n+\n+    def record_success(self):\n+        self.failure_count = 0\n+        self.state = \"closed\"\n+\n+\n def retry_payment(payment_fn, max_attempts=3):\n"
+            "diff_text": "diff --git a/app/payment_retry.py b/app/payment_retry.py\nindex 0d57588..5cdc683 100644\n--- a/app/payment_retry.py\n+++ b/app/payment_retry.py\n@@ -1,5 +1,20 @@\n import time\n import random\n \n \n+class CircuitBreaker:\n+    def __init__(self, failure_threshold=5):\n+        self.failure_threshold = failure_threshold\n+        self.failure_count = 0\n+        self.state = \"closed\"\n+\n+    def record_failure(self):\n+        self.failure_count += 1\n+        if self.failure_count >= self.failure_threshold:\n+            self.state = \"open\"\n+\n+    def record_success(self):\n+        self.failure_count = 0\n+        self.state = \"closed\"\n+\n+\n def retry_payment(payment_fn, max_attempts=3):\n"
           }
         ]
       },
       {
-        "commit_sha": "5e5e5e5",
+        "commit_sha": "cf10e22",
         "author": "ktran",
         "message": "Wire CircuitBreaker into retry_payment",
         "committed_at": "2026-09-20T13:45:00",
@@ -253,12 +253,12 @@
           {
             "file_path": "app/payment_retry.py",
             "change_type": "modified",
-            "diff_text": "@@ -19,8 +19,15 @@ class CircuitBreaker:\n \n \n-def retry_payment(payment_fn, max_attempts=3):\n+def retry_payment(payment_fn, breaker, max_attempts=3):\n+    if breaker.state == \"open\":\n+        raise RuntimeError(\"circuit open, refusing to attempt payment\")\n     attempts = 0\n     while attempts < max_attempts:\n         try:\n-            return payment_fn()\n+            result = payment_fn()\n+            breaker.record_success()\n+            return result\n         except Exception:\n             attempts += 1\n+            breaker.record_failure()\n             delay = 0.5 * (2 ** attempts)\n"
+            "diff_text": "diff --git a/app/payment_retry.py b/app/payment_retry.py\nindex 5ce260d..262e58e 100644\n--- a/app/payment_retry.py\n+++ b/app/payment_retry.py\n@@ -19,8 +19,15 @@ class CircuitBreaker:\n \n \n-def retry_payment(payment_fn, max_attempts=3):\n+def retry_payment(payment_fn, breaker, max_attempts=3):\n+    if breaker.state == \"open\":\n+        raise RuntimeError(\"circuit open, refusing to attempt payment\")\n     attempts = 0\n     while attempts < max_attempts:\n         try:\n-            return payment_fn()\n+            result = payment_fn()\n+            breaker.record_success()\n+            return result\n         except Exception:\n             attempts += 1\n+            breaker.record_failure()\n             delay = 0.5 * (2 ** attempts)\n"
           }
         ]
       },
       {
-        "commit_sha": "6f6f6f6",
+        "commit_sha": "89e257c",
         "author": "ktran",
         "message": "Add retry metrics counters",
         "committed_at": "2026-09-20T16:30:00",
@@ -266,12 +266,12 @@
           {
             "file_path": "app/payment_retry.py",
             "change_type": "modified",
-            "diff_text": "@@ -1,6 +1,13 @@\n import time\n import random\n \n \n+class RetryMetrics:\n+    def __init__(self):\n+        self.attempts_total = 0\n+        self.failures_total = 0\n+        self.successes_total = 0\n+\n+\n class CircuitBreaker:\n     def __init__(self, failure_threshold=5):\n"
+            "diff_text": "diff --git a/app/payment_retry.py b/app/payment_retry.py\nindex 6112a59..7360757 100644\n--- a/app/payment_retry.py\n+++ b/app/payment_retry.py\n@@ -1,6 +1,13 @@\n import time\n import random\n \n \n+class RetryMetrics:\n+    def __init__(self):\n+        self.attempts_total = 0\n+        self.failures_total = 0\n+        self.successes_total = 0\n+\n+\n class CircuitBreaker:\n     def __init__(self, failure_threshold=5):\n"
           }
         ]
       },
       {
-        "commit_sha": "7a7a7a7",
+        "commit_sha": "1be1ec2",
         "author": "ktran",
         "message": "Record metrics inside retry_payment",
         "committed_at": "2026-09-21T09:00:00",
@@ -279,12 +279,12 @@
           {
             "file_path": "app/payment_retry.py",
             "change_type": "modified",
-            "diff_text": "@@ -33,7 +33,7 @@ class CircuitBreaker:\n         self.state = \"closed\"\n \n \n-def retry_payment(payment_fn, breaker, max_attempts=3):\n+def retry_payment(payment_fn, breaker, metrics, max_attempts=3):\n     if breaker.state == \"open\":\n         raise RuntimeError(\"circuit open, refusing to attempt payment\")\n     attempts = 0\n@@ -41,10 +41,13 @@ def retry_payment(payment_fn, breaker, max_attempts=3):\n     while attempts < max_attempts:\n         try:\n             result = payment_fn()\n+            metrics.successes_total += 1\n             breaker.record_success()\n             return result\n         except Exception:\n             attempts += 1\n+            metrics.attempts_total += 1\n+            metrics.failures_total += 1\n             breaker.record_failure()\n             delay = 0.5 * (2 ** attempts)\n"
+            "diff_text": "diff --git a/app/payment_retry.py b/app/payment_retry.py\nindex 7307e54..ba8b027 100644\n--- a/app/payment_retry.py\n+++ b/app/payment_retry.py\n@@ -33,7 +33,7 @@ class CircuitBreaker:\n         self.state = \"closed\"\n \n \n-def retry_payment(payment_fn, breaker, max_attempts=3):\n+def retry_payment(payment_fn, breaker, metrics, max_attempts=3):\n     if breaker.state == \"open\":\n         raise RuntimeError(\"circuit open, refusing to attempt payment\")\n     attempts = 0\n@@ -41,10 +41,13 @@ def retry_payment(payment_fn, breaker, max_attempts=3):\n     while attempts < max_attempts:\n         try:\n             result = payment_fn()\n+            metrics.successes_total += 1\n             breaker.record_success()\n             return result\n         except Exception:\n             attempts += 1\n+            metrics.attempts_total += 1\n+            metrics.failures_total += 1\n             breaker.record_failure()\n             delay = 0.5 * (2 ** attempts)\n"
           }
         ]
       },
       {
-        "commit_sha": "8b8b8b8",
+        "commit_sha": "ad017f0",
         "author": "ktran",
         "message": "Add structured logging for each retry attempt",
         "committed_at": "2026-09-21T14:20:00",
@@ -292,12 +292,12 @@
           {
             "file_path": "app/payment_retry.py",
             "change_type": "modified",
-            "diff_text": "@@ -1,5 +1,8 @@\n import time\n import random\n+import logging\n+\n+logger = logging.getLogger(\"payment_retry\")\n \n \n class RetryMetrics:\n@@ -50,6 +53,7 @@ def retry_payment(payment_fn, breaker, metrics, max_attempts=3):\n             metrics.attempts_total += 1\n             metrics.failures_total += 1\n             breaker.record_failure()\n+            logger.warning(\"payment attempt %s failed\", attempts)\n             delay = 0.5 * (2 ** attempts)\n"
+            "diff_text": "diff --git a/app/payment_retry.py b/app/payment_retry.py\nindex d893920..59ad538 100644\n--- a/app/payment_retry.py\n+++ b/app/payment_retry.py\n@@ -1,5 +1,8 @@\n import time\n import random\n+import logging\n+\n+logger = logging.getLogger(\"payment_retry\")\n \n \n class RetryMetrics:\n@@ -50,6 +53,7 @@ def retry_payment(payment_fn, breaker, metrics, max_attempts=3):\n             metrics.attempts_total += 1\n             metrics.failures_total += 1\n             breaker.record_failure()\n+            logger.warning(\"payment attempt %s failed\", attempts)\n             delay = 0.5 * (2 ** attempts)\n"
           }
         ]
       },
       {
-        "commit_sha": "9c9c9c9",
+        "commit_sha": "3b9d72b",
         "author": "ktran",
         "message": "Allow configuring which exceptions are retryable",
         "committed_at": "2026-09-22T10:10:00",
@@ -305,12 +305,12 @@
           {
             "file_path": "app/payment_retry.py",
             "change_type": "modified",
-            "diff_text": "@@ -40,7 +40,7 @@ class CircuitBreaker:\n         self.state = \"closed\"\n \n \n-def retry_payment(payment_fn, breaker, metrics, max_attempts=3):\n+def retry_payment(payment_fn, breaker, metrics, max_attempts=3, retryable_exceptions=(Exception,)):\n     if breaker.state == \"open\":\n         raise RuntimeError(\"circuit open, refusing to attempt payment\")\n     attempts = 0\n@@ -50,7 +50,7 @@ def retry_payment(payment_fn, breaker, metrics, max_attempts=3, retryable_exce\n             metrics.successes_total += 1\n             breaker.record_success()\n             return result\n-        except Exception:\n+        except retryable_exceptions:\n             attempts += 1\n             metrics.attempts_total += 1\n             metrics.failures_total += 1\n"
+            "diff_text": "diff --git a/app/payment_retry.py b/app/payment_retry.py\nindex 39ad316..0a5bcbb 100644\n--- a/app/payment_retry.py\n+++ b/app/payment_retry.py\n@@ -40,7 +40,7 @@ class CircuitBreaker:\n         self.state = \"closed\"\n \n \n-def retry_payment(payment_fn, breaker, metrics, max_attempts=3):\n+def retry_payment(payment_fn, breaker, metrics, max_attempts=3, retryable_exceptions=(Exception,)):\n     if breaker.state == \"open\":\n         raise RuntimeError(\"circuit open, refusing to attempt payment\")\n     attempts = 0\n@@ -50,7 +50,7 @@ def retry_payment(payment_fn, breaker, metrics, max_attempts=3, retryable_exce\n             metrics.successes_total += 1\n             breaker.record_success()\n             return result\n-        except Exception:\n+        except retryable_exceptions:\n             attempts += 1\n             metrics.attempts_total += 1\n             metrics.failures_total += 1\n"
           }
         ]
       },
       {
-        "commit_sha": "0d0d0d0",
+        "commit_sha": "4a8e81a",
         "author": "ktran",
         "message": "Add idempotency key passthrough",
         "committed_at": "2026-09-22T13:50:00",
@@ -318,12 +318,12 @@
           {
             "file_path": "app/payment_retry.py",
             "change_type": "modified",
-            "diff_text": "@@ -40,10 +40,11 @@ class CircuitBreaker:\n         self.state = \"closed\"\n \n \n-def retry_payment(payment_fn, breaker, metrics, max_attempts=3, retryable_exceptions=(Exception,)):\n+def retry_payment(payment_fn, breaker, metrics, idempotency_key=None, max_attempts=3, retryable_exceptions=(Exception,)):\n     if breaker.state == \"open\":\n         raise RuntimeError(\"circuit open, refusing to attempt payment\")\n     attempts = 0\n+    logger.info(\"starting retry_payment idempotency_key=%s\", idempotency_key)\n     while attempts < max_attempts:\n         try:\n             result = payment_fn()\n"
+            "diff_text": "diff --git a/app/payment_retry.py b/app/payment_retry.py\nindex beac757..bc9527d 100644\n--- a/app/payment_retry.py\n+++ b/app/payment_retry.py\n@@ -40,10 +40,11 @@ class CircuitBreaker:\n         self.state = \"closed\"\n \n \n-def retry_payment(payment_fn, breaker, metrics, max_attempts=3, retryable_exceptions=(Exception,)):\n+def retry_payment(payment_fn, breaker, metrics, idempotency_key=None, max_attempts=3, retryable_exceptions=(Exception,)):\n     if breaker.state == \"open\":\n         raise RuntimeError(\"circuit open, refusing to attempt payment\")\n     attempts = 0\n+    logger.info(\"starting retry_payment idempotency_key=%s\", idempotency_key)\n     while attempts < max_attempts:\n         try:\n             result = payment_fn()\n"
           }
         ]
       },
       {
-        "commit_sha": "1e1e1e1",
+        "commit_sha": "b89fcfe",
         "author": "ktran",
         "message": "Add docstrings and final cleanup",
         "committed_at": "2026-09-22T17:10:00",
@@ -331,7 +331,7 @@
           {
             "file_path": "app/payment_retry.py",
             "change_type": "modified",
-            "diff_text": "@@ -40,6 +40,11 @@ class CircuitBreaker:\n         self.state = \"closed\"\n \n \n+\"\"\"\n+retry_payment executes payment_fn with retry, exponential backoff + jitter,\n+circuit breaking, and metrics/logging, guarded by an idempotency key so\n+retried attempts don't double-charge the customer.\n+\"\"\"\n def retry_payment(payment_fn, breaker, metrics, idempotency_key=None, max_attempts=3, retryable_exceptions=(Exception,)):\n     if breaker.state == \"open\":\n         raise RuntimeError(\"circuit open, refusing to attempt payment\")\n"
+            "diff_text": "diff --git a/app/payment_retry.py b/app/payment_retry.py\nindex fad1256..d7db847 100644\n--- a/app/payment_retry.py\n+++ b/app/payment_retry.py\n@@ -40,6 +40,11 @@ class CircuitBreaker:\n         self.state = \"closed\"\n \n \n+\"\"\"\n+retry_payment executes payment_fn with retry, exponential backoff + jitter,\n+circuit breaking, and metrics/logging, guarded by an idempotency key so\n+retried attempts don't double-charge the customer.\n+\"\"\"\n def retry_payment(payment_fn, breaker, metrics, idempotency_key=None, max_attempts=3, retryable_exceptions=(Exception,)):\n     if breaker.state == \"open\":\n         raise RuntimeError(\"circuit open, refusing to attempt payment\")\n"
           }
         ]
       }
