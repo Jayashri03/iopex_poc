@@ -15,15 +15,24 @@ pexgit_adapter/   interface + mock implementation (fixture PRs, each with severa
 agent/            context_builder (assembles + size-guards the commit history),
                    tools (list_files / search_repo / get_file - plain grep, no RAG),
                    reasoning (multistep ReAct loop), review_agent (entrypoint)
-jobs/             offline script: run_review.py reviews all PRs -> MySQL
-api/              FastAPI app, read-only, serves what jobs/run_review.py already wrote
+scripts/          init_db.py (drop+recreate schema), ingest_mock_data.py (load PRs/commits into MySQL)
+jobs/             run_review.py - reviews already-ingested PRs, writes results -> MySQL
+api/              FastAPI app, read-only, serves what scripts/jobs already wrote
 db/               schema.sql + connection pooling
 ```
 
-Review generation is **offline**, not on-demand: `jobs/run_review.py` runs
-the agent per PR and persists results (comments, conflicts, full reasoning
-trace) to MySQL. The API only reads. This keeps `GET /prs/{id}` fast and
-lets you iterate on the agent without touching the API.
+Three separate steps, each owning one thing:
+1. `scripts/init_db.py` - drops and recreates every table. Always a clean slate.
+2. `scripts/ingest_mock_data.py` - the only thing that writes `prs`/`commits`/`commit_files`.
+   Wipes and reloads all PR rows from the adapter every run.
+3. `jobs/run_review.py` - reads the already-ingested PR row, runs the agent (using the adapter's
+   full commit history as input, independent of what's in MySQL), and writes review output
+   (comments/conflicts/reasoning) onto that row. Skips a PR with a clear message if it hasn't been
+   ingested yet - it never inserts PR/commit rows itself.
+
+The API only reads whatever those scripts already wrote. This keeps `GET /prs/{id}` fast and lets
+you iterate on the agent without touching ingestion, or reload fixtures without re-running the
+(slower, Ollama-calling) review step.
 
 ## Why no RAG
 
@@ -75,15 +84,24 @@ rather than being bolted on here.
    ollama pull qwen2.5-coder:7b
    ```
 5. Create the database and tables: `python scripts/init_db.py`
-6. Run the agent over all mock PRs and persist results: `python jobs/run_review.py`
-7. Start the API: `uvicorn api.main:app --reload`
+6. Load the mock PRs/commits into MySQL: `python scripts/ingest_mock_data.py`
+7. Run the agent over all ingested PRs and persist results: `python jobs/run_review.py`
+8. Start the API: `uvicorn api.main:app --reload`
 
 ## Endpoints
 
-- `GET /prs` — list all PRs (author, source/target branch, status, review status, timestamps)
-- `GET /prs/{pexgit_pr_id}` — full detail: every commit (with its own diffs), merge conflicts,
-  review comments, and the agent's full step-by-step reasoning trace (thought / action / tool
-  input / observation for each step)
+- `GET /prs` — every PR's repository, branches, status, review status, timestamps, and every
+  commit's id/author/message/timestamp (no diffs - that's `GET /prs/{id}`)
+- `GET /prs/{pexgit_pr_id}` — full detail: repository, branches, every commit with its own
+  files+diffs, merge conflicts, review comments, and the agent's full step-by-step reasoning
+  trace (thought / action / tool input / observation for each step)
+
+What the agent is actually given as input: for each PR, its repository/branches plus every
+commit's id, author, message, and diff (`agent/context_builder.py`) - the same commit data
+`GET /prs/{id}` exposes, minus the review output (that's the agent's *output*, not its input).
+It is not hunk-level line context beyond the diff itself, and it is not the full content of
+every touched file by default - the agent can fetch a full file on demand via the `get_file`
+tool if a diff alone isn't enough, but nothing forces that on every review.
 
 Mock PRs and what they demonstrate:
 - `PR-101` — 6 commits against a small `app/` package (`payments.py`, `orders.py`, `config.py`,
@@ -107,7 +125,11 @@ specifics. Every review comment in the output comes from the Ollama chat model's
 `final_answer` JSON; there is no fallback or stub path if Ollama is unreachable, so a review can
 only be produced by an actual model call (see `agent/llm.py`).
 
-## Re-running after changing the agent or fixtures
+## Re-running after changing things
 
-`jobs/run_review.py` is idempotent per PR (`pexgit_pr_id`) - re-run it any time after changing
-the agent prompt, tools, or fixture data, and it overwrites that PR's commits/comments/conflicts/reasoning.
+- Changed the agent prompt/tools only? Re-run `python jobs/run_review.py` - it overwrites each
+  PR's comments/conflicts/reasoning in place, no need to touch ingestion.
+- Changed `pexgit_adapter/fixtures/prs.json`? Re-run `python scripts/ingest_mock_data.py` (reloads
+  PR/commit rows from scratch) then `python jobs/run_review.py`.
+- Changed `db/schema.sql` itself? Re-run `python scripts/init_db.py` first (drops everything),
+  then both scripts above.
