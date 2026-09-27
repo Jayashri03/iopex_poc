@@ -3,11 +3,14 @@ Offline job: run the multistep review agent over every PR already ingested
 into MySQL (via scripts/ingest_mock_data.py) and persist review comments,
 merge conflicts, and the full reasoning trace back onto that PR row.
 
-This script does not write prs/commits/commit_files - it only reads a PR's
-commit history from the pexgit adapter (for the agent's context) and looks
-up the matching row already in MySQL to attach results to. If a PR hasn't
-been ingested yet, it's skipped with a clear message rather than silently
-inserting it - ingestion and review are separate steps on purpose.
+This script does not write prs/commits/commit_files - it only reviews rows
+that are already there. Commit data for the agent's context comes from
+db/pr_repository.py (i.e. MySQL itself), NOT a second fetch from the
+adapter - this guarantees the agent reasons about exactly the commit set
+that's stored, so a review_comment's introduced_in_commit always points at
+a commit that actually exists in this PR's row. The adapter is only used
+here to build the agent's tools (list_files/search_repo/get_file), which
+browse the wider codebase rather than this PR's own commits.
 
 PRs whose full commit history doesn't fit the phase-1 single-shot context
 budget (see agent/context_builder.py) are marked review_status='needs_batching'
@@ -24,13 +27,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 from agent.context_builder import CommitContextTooLarge  # noqa: E402
 from agent.review_agent import review_pr  # noqa: E402
 from db.connection import get_cursor  # noqa: E402
+from db.pr_repository import load_pr  # noqa: E402
 from pexgit_adapter.mock_adapter import MockPexGitAdapter  # noqa: E402
-
-
-def _get_pr_id(cursor, pexgit_pr_id: str) -> int | None:
-    cursor.execute("SELECT id FROM prs WHERE pexgit_pr_id = %s", (pexgit_pr_id,))
-    row = cursor.fetchone()
-    return row["id"] if row else None
 
 
 def _persist_result(cursor, pr_id: int, result):
@@ -85,17 +83,19 @@ def _persist_result(cursor, pr_id: int, result):
 
 
 def main():
-    adapter = MockPexGitAdapter()
+    adapter = MockPexGitAdapter()  # only for the agent's codebase-browsing tools
 
-    for pr_summary in adapter.list_prs():
-        with get_cursor() as cursor:
-            pr_id = _get_pr_id(cursor, pr_summary.pexgit_pr_id)
+    with get_cursor() as cursor:
+        cursor.execute("SELECT id, pexgit_pr_id FROM prs ORDER BY created_at ASC")
+        ingested_prs = cursor.fetchall()
 
-        if pr_id is None:
-            print(f"SKIPPING {pr_summary.pexgit_pr_id}: not ingested yet - run scripts/ingest_mock_data.py first")
-            continue
+    if not ingested_prs:
+        print("No PRs ingested yet - run scripts/ingest_mock_data.py first.")
+        return
 
-        pr = adapter.get_pr(pr_summary.pexgit_pr_id)
+    for row in ingested_prs:
+        pr_id = row["id"]
+        pr = load_pr(row["pexgit_pr_id"])
         print(f"Reviewing {pr.pexgit_pr_id}: {pr.title} ({len(pr.commits)} commits)")
 
         try:

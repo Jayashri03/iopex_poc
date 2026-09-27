@@ -18,17 +18,23 @@ agent/            context_builder (assembles + size-guards the commit history),
 scripts/          init_db.py (drop+recreate schema), ingest_mock_data.py (load PRs/commits into MySQL)
 jobs/             run_review.py - reviews already-ingested PRs, writes results -> MySQL
 api/              FastAPI app, read-only, serves what scripts/jobs already wrote
-db/               schema.sql + connection pooling
+db/               schema.sql, connection pooling, pr_repository.py (reconstructs a PR from MySQL rows)
 ```
 
 Three separate steps, each owning one thing:
 1. `scripts/init_db.py` - drops and recreates every table. Always a clean slate.
 2. `scripts/ingest_mock_data.py` - the only thing that writes `prs`/`commits`/`commit_files`.
    Wipes and reloads all PR rows from the adapter every run.
-3. `jobs/run_review.py` - reads the already-ingested PR row, runs the agent (using the adapter's
-   full commit history as input, independent of what's in MySQL), and writes review output
-   (comments/conflicts/reasoning) onto that row. Skips a PR with a clear message if it hasn't been
-   ingested yet - it never inserts PR/commit rows itself.
+3. `jobs/run_review.py` - iterates whatever's already in `prs`, loads each PR's full commit
+   history back out of MySQL (`db/pr_repository.py`, not a second fetch from the adapter), runs
+   the agent against that, and writes review output (comments/conflicts/reasoning) onto the row.
+
+The agent's commit-diff input and the API's commit-diff output are deliberately the same read:
+both come from `commits`/`commit_files` in MySQL. Nothing re-fetches from the adapter for a PR
+that's already been ingested - that would let the two diverge (the agent reviewing a commit set
+the DB, and therefore the API, doesn't actually have). The adapter is still used for one thing:
+`agent/tools.py`'s `list_files`/`search_repo`/`get_file`, which browse the wider codebase rather
+than this PR's own commits - MySQL never stores the full repo, only what commits touched.
 
 The API only reads whatever those scripts already wrote. This keeps `GET /prs/{id}` fast and lets
 you iterate on the agent without touching ingestion, or reload fixtures without re-running the
@@ -97,8 +103,9 @@ rather than being bolted on here.
   trace (thought / action / tool input / observation for each step)
 
 What the agent is actually given as input: for each PR, its repository/branches plus every
-commit's id, author, message, and diff (`agent/context_builder.py`) - the same commit data
-`GET /prs/{id}` exposes, minus the review output (that's the agent's *output*, not its input).
+commit's id, author, message, and diff, read back from MySQL via `db/pr_repository.py`
+(`agent/context_builder.py` assembles it into the prompt) - literally the same rows
+`GET /prs/{id}` reads, minus the review output (that's the agent's *output*, not its input).
 It is not hunk-level line context beyond the diff itself, and it is not the full content of
 every touched file by default - the agent can fetch a full file on demand via the `get_file`
 tool if a diff alone isn't enough, but nothing forces that on every review.
