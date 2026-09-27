@@ -1,7 +1,13 @@
 """
-Offline job: run the multistep review agent over every open PR and persist
-PR metadata, commits, review comments, merge conflicts, and the full
-reasoning trace into MySQL. The API layer only ever reads from these tables.
+Offline job: run the multistep review agent over every PR already ingested
+into MySQL (via scripts/ingest_mock_data.py) and persist review comments,
+merge conflicts, and the full reasoning trace back onto that PR row.
+
+This script does not write prs/commits/commit_files - it only reads a PR's
+commit history from the pexgit adapter (for the agent's context) and looks
+up the matching row already in MySQL to attach results to. If a PR hasn't
+been ingested yet, it's skipped with a clear message rather than silently
+inserting it - ingestion and review are separate steps on purpose.
 
 PRs whose full commit history doesn't fit the phase-1 single-shot context
 budget (see agent/context_builder.py) are marked review_status='needs_batching'
@@ -21,59 +27,16 @@ from db.connection import get_cursor  # noqa: E402
 from pexgit_adapter.mock_adapter import MockPexGitAdapter  # noqa: E402
 
 
-def _upsert_pr(cursor, pr) -> int:
-    cursor.execute("SELECT id FROM prs WHERE pexgit_pr_id = %s", (pr.pexgit_pr_id,))
-    existing = cursor.fetchone()
-
-    if existing:
-        pr_id = existing["id"]
-        cursor.execute(
-            """
-            UPDATE prs SET title=%s, description=%s, author=%s, source_branch=%s,
-                target_branch=%s, status=%s, updated_at=%s
-            WHERE id=%s
-            """,
-            (pr.title, pr.description, pr.author, pr.source_branch, pr.target_branch,
-             pr.status, pr.updated_at, pr_id),
-        )
-    else:
-        cursor.execute(
-            """
-            INSERT INTO prs (pexgit_pr_id, title, description, author, source_branch,
-                target_branch, status, review_status, created_at, updated_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, 'pending', %s, %s)
-            """,
-            (pr.pexgit_pr_id, pr.title, pr.description, pr.author, pr.source_branch,
-             pr.target_branch, pr.status, pr.created_at, pr.updated_at),
-        )
-        pr_id = cursor.lastrowid
-
-    # Clear anything from a previous run of this job for this PR.
-    for table in ("commits", "merge_conflicts", "review_comments", "reasoning_steps"):
-        cursor.execute(f"DELETE FROM {table} WHERE pr_id = %s", (pr_id,))
-
-    for order, commit in enumerate(pr.commits):
-        cursor.execute(
-            """
-            INSERT INTO commits (pr_id, commit_sha, commit_order, author, message, committed_at)
-            VALUES (%s, %s, %s, %s, %s, %s)
-            """,
-            (pr_id, commit.commit_sha, order, commit.author, commit.message, commit.committed_at),
-        )
-        commit_id = cursor.lastrowid
-        for f in commit.files:
-            cursor.execute(
-                """
-                INSERT INTO commit_files (commit_id, file_path, change_type, diff_text)
-                VALUES (%s, %s, %s, %s)
-                """,
-                (commit_id, f.file_path, f.change_type, f.diff_text),
-            )
-
-    return pr_id
+def _get_pr_id(cursor, pexgit_pr_id: str) -> int | None:
+    cursor.execute("SELECT id FROM prs WHERE pexgit_pr_id = %s", (pexgit_pr_id,))
+    row = cursor.fetchone()
+    return row["id"] if row else None
 
 
 def _persist_result(cursor, pr_id: int, result):
+    for table in ("merge_conflicts", "review_comments", "reasoning_steps"):
+        cursor.execute(f"DELETE FROM {table} WHERE pr_id = %s", (pr_id,))
+
     for c in result.review_comments:
         cursor.execute(
             """
@@ -125,11 +88,15 @@ def main():
     adapter = MockPexGitAdapter()
 
     for pr_summary in adapter.list_prs():
+        with get_cursor() as cursor:
+            pr_id = _get_pr_id(cursor, pr_summary.pexgit_pr_id)
+
+        if pr_id is None:
+            print(f"SKIPPING {pr_summary.pexgit_pr_id}: not ingested yet - run scripts/ingest_mock_data.py first")
+            continue
+
         pr = adapter.get_pr(pr_summary.pexgit_pr_id)
         print(f"Reviewing {pr.pexgit_pr_id}: {pr.title} ({len(pr.commits)} commits)")
-
-        with get_cursor(commit=True) as cursor:
-            pr_id = _upsert_pr(cursor, pr)
 
         try:
             result = review_pr(pr, adapter)

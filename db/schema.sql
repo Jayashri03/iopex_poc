@@ -3,9 +3,21 @@ CREATE DATABASE IF NOT EXISTS pr_review_agent
 
 USE pr_review_agent;
 
-CREATE TABLE IF NOT EXISTS prs (
+-- This schema is dropped and recreated from scratch every time
+-- scripts/init_db.py runs - it is not meant to be a migration.
+SET FOREIGN_KEY_CHECKS = 0;
+DROP TABLE IF EXISTS reasoning_steps;
+DROP TABLE IF EXISTS review_comments;
+DROP TABLE IF EXISTS merge_conflicts;
+DROP TABLE IF EXISTS commit_files;
+DROP TABLE IF EXISTS commits;
+DROP TABLE IF EXISTS prs;
+SET FOREIGN_KEY_CHECKS = 1;
+
+CREATE TABLE prs (
     id INT PRIMARY KEY AUTO_INCREMENT,
     pexgit_pr_id VARCHAR(64) NOT NULL UNIQUE,
+    repository VARCHAR(255) NOT NULL,
     title VARCHAR(255) NOT NULL,
     description TEXT,
     author VARCHAR(128) NOT NULL,
@@ -21,7 +33,7 @@ CREATE TABLE IF NOT EXISTS prs (
     review_summary TEXT
 );
 
-CREATE TABLE IF NOT EXISTS commits (
+CREATE TABLE commits (
     id INT PRIMARY KEY AUTO_INCREMENT,
     pr_id INT NOT NULL,
     commit_sha VARCHAR(64) NOT NULL,
@@ -33,7 +45,7 @@ CREATE TABLE IF NOT EXISTS commits (
     UNIQUE KEY uniq_pr_commit (pr_id, commit_sha)
 );
 
-CREATE TABLE IF NOT EXISTS commit_files (
+CREATE TABLE commit_files (
     id INT PRIMARY KEY AUTO_INCREMENT,
     commit_id INT NOT NULL,
     file_path VARCHAR(512) NOT NULL,
@@ -42,7 +54,7 @@ CREATE TABLE IF NOT EXISTS commit_files (
     FOREIGN KEY (commit_id) REFERENCES commits(id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS merge_conflicts (
+CREATE TABLE merge_conflicts (
     id INT PRIMARY KEY AUTO_INCREMENT,
     pr_id INT NOT NULL,
     file_path VARCHAR(512) NOT NULL,
@@ -50,7 +62,7 @@ CREATE TABLE IF NOT EXISTS merge_conflicts (
     FOREIGN KEY (pr_id) REFERENCES prs(id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS review_comments (
+CREATE TABLE review_comments (
     id INT PRIMARY KEY AUTO_INCREMENT,
     pr_id INT NOT NULL,
     file_path VARCHAR(512) NOT NULL,
@@ -63,7 +75,7 @@ CREATE TABLE IF NOT EXISTS review_comments (
     FOREIGN KEY (pr_id) REFERENCES prs(id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS reasoning_steps (
+CREATE TABLE reasoning_steps (
     id INT PRIMARY KEY AUTO_INCREMENT,
     pr_id INT NOT NULL,
     step_number INT NOT NULL,

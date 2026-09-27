@@ -27,6 +27,7 @@ class Commit:
 @dataclass
 class PullRequest:
     pexgit_pr_id: str
+    repository: str
     title: str
     description: str
     author: str
@@ -41,7 +42,11 @@ class PullRequest:
 class PexGitAdapter(ABC):
     @abstractmethod
     def list_prs(self) -> list[PullRequest]:
-        """Return PR metadata only (no commits) - used for the list endpoint."""
+        """
+        Return PR metadata for the list endpoint: repository, branches, status,
+        plus every commit's id/author/message/timestamp - but NOT per-file diffs
+        (that's what get_pr is for). Commit.files is empty on these.
+        """
 
     @abstractmethod
     def get_pr(self, pexgit_pr_id: str) -> PullRequest:

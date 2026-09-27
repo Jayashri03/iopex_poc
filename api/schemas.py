@@ -3,9 +3,17 @@ from datetime import datetime
 from pydantic import BaseModel
 
 
+class CommitBriefOut(BaseModel):
+    commit_sha: str
+    author: str
+    message: str
+    committed_at: datetime
+
+
 class PRListItem(BaseModel):
     id: int
     pexgit_pr_id: str
+    repository: str
     title: str
     author: str
     source_branch: str
@@ -14,6 +22,7 @@ class PRListItem(BaseModel):
     review_status: str
     created_at: datetime
     updated_at: datetime
+    commits: list[CommitBriefOut]
 
 
 class CommitFileOut(BaseModel):
@@ -57,6 +66,7 @@ class ReasoningStepOut(BaseModel):
 class PRDetailOut(BaseModel):
     id: int
     pexgit_pr_id: str
+    repository: str
     title: str
     description: str | None
     author: str

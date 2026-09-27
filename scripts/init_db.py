@@ -1,4 +1,8 @@
-"""Run once to create the database and tables from db/schema.sql."""
+"""
+Drop and recreate every table from db/schema.sql. Safe (and intended) to
+re-run any time - it always leaves you with a fresh, empty schema, never a
+migration on top of what's already there.
+"""
 import pathlib
 import sys
 

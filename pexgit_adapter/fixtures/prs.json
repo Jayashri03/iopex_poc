@@ -1,5 +1,6 @@
 [
   {
+    "repository": "payments-service",
     "pexgit_pr_id": "PR-101",
     "title": "Add bulk discount support to payments",
     "description": "Introduces apply_bulk_discount for large orders that scales the discount by a bulk factor. Fixes PROJ-482.",
@@ -91,6 +92,7 @@
     ]
   },
   {
+    "repository": "payments-service",
     "pexgit_pr_id": "PR-102",
     "title": "Fix rounding to always round half up",
     "description": "Standardizes currency rounding. The feature commit is clean; the merge commit is where things go wrong.",
@@ -130,6 +132,7 @@
     ]
   },
   {
+    "repository": "payments-service",
     "pexgit_pr_id": "PR-103",
     "title": "Add money_to_string helper for invoice export",
     "description": "New helper to render an amount with currency code, used by a new invoicing module.",
@@ -182,6 +185,7 @@
     ]
   },
   {
+    "repository": "payments-service",
     "pexgit_pr_id": "PR-104",
     "title": "Refactor payment retry logic",
     "description": "Long-running feature branch: adds retry, backoff, jitter, a circuit breaker, metrics, and logging around outbound payment calls. 11 commits - intentionally large to exercise the commit-context-size guard (see README Phase 2 notes).",

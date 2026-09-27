@@ -19,13 +19,13 @@ class MockPexGitAdapter(PexGitAdapter):
         self._prs_raw = json.loads(PRS_FILE.read_text(encoding="utf-8"))
 
     def list_prs(self) -> list[PullRequest]:
-        # Brief listing: metadata only, no commits, matching what GET /prs needs.
-        return [self._to_pr(raw, include_commits=False) for raw in self._prs_raw]
+        # Every commit's id/author/message/timestamp, but no per-file diffs.
+        return [self._to_pr(raw, include_diffs=False) for raw in self._prs_raw]
 
     def get_pr(self, pexgit_pr_id: str) -> PullRequest:
         for raw in self._prs_raw:
             if raw["pexgit_pr_id"] == pexgit_pr_id:
-                return self._to_pr(raw, include_commits=True)
+                return self._to_pr(raw, include_diffs=True)
         raise KeyError(f"No PR found with id {pexgit_pr_id}")
 
     def list_repo_files(self) -> list[str]:
@@ -41,29 +41,32 @@ class MockPexGitAdapter(PexGitAdapter):
         return full_path.read_text(encoding="utf-8")
 
     @staticmethod
-    def _to_pr(raw: dict, include_commits: bool) -> PullRequest:
-        commits = []
-        if include_commits:
-            for c in raw.get("commits", []):
-                commits.append(
-                    Commit(
-                        commit_sha=c["commit_sha"],
-                        author=c["author"],
-                        message=c["message"],
-                        committed_at=c["committed_at"],
-                        files=[
-                            CommitFile(
-                                file_path=f["file_path"],
-                                change_type=f["change_type"],
-                                diff_text=f["diff_text"],
-                            )
-                            for f in c.get("files", [])
-                        ],
-                    )
-                )
+    def _to_pr(raw: dict, include_diffs: bool) -> PullRequest:
+        commits = [
+            Commit(
+                commit_sha=c["commit_sha"],
+                author=c["author"],
+                message=c["message"],
+                committed_at=c["committed_at"],
+                files=(
+                    [
+                        CommitFile(
+                            file_path=f["file_path"],
+                            change_type=f["change_type"],
+                            diff_text=f["diff_text"],
+                        )
+                        for f in c.get("files", [])
+                    ]
+                    if include_diffs
+                    else []
+                ),
+            )
+            for c in raw.get("commits", [])
+        ]
 
         return PullRequest(
             pexgit_pr_id=raw["pexgit_pr_id"],
+            repository=raw["repository"],
             title=raw["title"],
             description=raw["description"],
             author=raw["author"],

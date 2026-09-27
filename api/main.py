@@ -3,6 +3,7 @@ import json
 from fastapi import FastAPI, HTTPException
 
 from api.schemas import (
+    CommitBriefOut,
     CommitFileOut,
     CommitOut,
     MergeConflictOut,
@@ -21,14 +22,33 @@ def list_prs():
     with get_cursor() as cursor:
         cursor.execute(
             """
-            SELECT id, pexgit_pr_id, title, author, source_branch, target_branch,
+            SELECT id, pexgit_pr_id, repository, title, author, source_branch, target_branch,
                    status, review_status, created_at, updated_at
             FROM prs
             ORDER BY created_at DESC
             """
         )
-        rows = cursor.fetchall()
-    return rows
+        prs = cursor.fetchall()
+
+        items = []
+        for pr in prs:
+            cursor.execute(
+                """
+                SELECT commit_sha, author, message, committed_at
+                FROM commits WHERE pr_id = %s
+                ORDER BY commit_order ASC
+                """,
+                (pr["id"],),
+            )
+            commits = cursor.fetchall()
+            items.append(
+                PRListItem(
+                    **pr,
+                    commits=[CommitBriefOut(**c) for c in commits],
+                )
+            )
+
+    return items
 
 
 @app.get("/prs/{pexgit_pr_id}", response_model=PRDetailOut)
@@ -103,6 +123,7 @@ def get_pr_detail(pexgit_pr_id: str):
     return PRDetailOut(
         id=pr["id"],
         pexgit_pr_id=pr["pexgit_pr_id"],
+        repository=pr["repository"],
         title=pr["title"],
         description=pr["description"],
         author=pr["author"],
