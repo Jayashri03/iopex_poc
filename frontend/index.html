@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PR Review Agent</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f6f7f9;
+    --surface: #ffffff;
+    --surface-2: #f1f2f5;
+    --border: #e2e4e9;
+    --text: #1a1d24;
+    --text-dim: #666d7a;
+    --text-faint: #9aa1ad;
+    --accent: #3b5bdb;
+    --accent-bg: #eef1fd;
+    --red: #d64545;
+    --red-bg: #fdecec;
+    --amber: #b3760a;
+    --amber-bg: #fbf1de;
+    --green: #2f9e5c;
+    --green-bg: #e9f8ef;
+    --gray: #6b7280;
+    --gray-bg: #eef0f2;
+    --diff-add: #e6f7ec;
+    --diff-add-text: #1a7f3c;
+    --diff-del: #fdedee;
+    --diff-del-text: #b3261e;
+    --diff-hunk: #eef1fd;
+    --diff-hunk-text: #3b5bdb;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a;
+      --surface: #1c1f26;
+      --surface-2: #23262e;
+      --border: #2e323c;
+      --text: #e7e9ee;
+      --text-dim: #a3a9b5;
+      --text-faint: #6b7280;
+      --accent: #7c93f7;
+      --accent-bg: #232a45;
+      --red: #ff8080;
+      --red-bg: #3a1f22;
+      --amber: #e0b356;
+      --amber-bg: #3a2f1a;
+      --green: #6fd196;
+      --green-bg: #1c3527;
+      --gray: #9aa1ad;
+      --gray-bg: #262a32;
+      --diff-add: #16321f;
+      --diff-add-text: #7fe0a0;
+      --diff-del: #3a1f22;
+      --diff-del-text: #ff9b9b;
+      --diff-hunk: #232a45;
+      --diff-hunk-text: #9fb1fb;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .wrap {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 24px 16px 64px;
+  }
+  header.app {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  header.app h1 {
+    font-size: 19px;
+    margin: 0;
+    letter-spacing: -0.01em;
+  }
+  header.app .sub {
+    color: var(--text-dim);
+    font-size: 13px;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+
+  /* ---------- list view ---------- */
+  .pr-list { display: flex; flex-direction: column; gap: 10px; }
+  .pr-row {
+    display: block;
+    padding: 14px 16px;
+    cursor: pointer;
+    transition: border-color .12s ease;
+  }
+  .pr-row:hover { border-color: var(--accent); text-decoration: none; }
+  .pr-row-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 4px;
+  }
+  .pr-id { font-family: var(--mono); color: var(--text-dim); font-size: 12.5px; }
+  .pr-title { font-weight: 600; color: var(--text); }
+  .pr-meta {
+    color: var(--text-dim);
+    font-size: 12.5px;
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-top: 6px;
+  }
+  .pr-meta .branch { font-family: var(--mono); }
+  .pr-meta .branch .arrow { color: var(--text-faint); margin: 0 4px; }
+  .commit-strip {
+    display: flex;
+    gap: 6px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+  }
+  .commit-chip {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    padding: 2px 7px;
+    border-radius: 5px;
+    white-space: nowrap;
+  }
+
+  /* ---------- badges ---------- */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: .02em;
+  }
+  .badge.status-open { background: var(--accent-bg); color: var(--accent); }
+  .badge.status-merged, .badge.status-reviewed { background: var(--green-bg); color: var(--green); }
+  .badge.status-closed { background: var(--gray-bg); color: var(--gray); }
+  .badge.status-pending { background: var(--gray-bg); color: var(--gray); }
+  .badge.status-needs_batching { background: var(--amber-bg); color: var(--amber); }
+  .badge.status-error { background: var(--red-bg); color: var(--red); }
+  .badge.sev-high { background: var(--red-bg); color: var(--red); }
+  .badge.sev-medium { background: var(--amber-bg); color: var(--amber); }
+  .badge.sev-low { background: var(--accent-bg); color: var(--accent); }
+
+  /* ---------- detail view ---------- */
+  .backlink { display: inline-block; margin-bottom: 16px; font-size: 13px; }
+  .detail-header { padding: 18px 20px; margin-bottom: 20px; }
+  .detail-header h2 { margin: 2px 0 10px; font-size: 20px; }
+  .detail-header .repo { font-family: var(--mono); color: var(--text-dim); font-size: 12.5px; }
+  .detail-badges { display: flex; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
+  .detail-meta {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 10px 20px;
+    margin-top: 14px;
+    font-size: 12.5px;
+    color: var(--text-dim);
+  }
+  .detail-meta strong { display: block; color: var(--text); font-weight: 600; font-size: 13px; }
+  .summary-box {
+    margin-top: 14px;
+    padding: 12px 14px;
+    background: var(--surface-2);
+    border-radius: 8px;
+    font-size: 13.5px;
+    color: var(--text);
+  }
+  .summary-box .label { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-faint); margin-bottom: 4px; }
+
+  section.block { margin-bottom: 26px; }
+  section.block > h3 {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--text-dim);
+    margin: 0 0 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  section.block > h3 .count {
+    background: var(--surface-2);
+    border-radius: 999px;
+    padding: 1px 8px;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .empty-note { color: var(--text-faint); font-size: 13px; padding: 10px 2px; }
+
+  /* comments / conflicts */
+  .issue {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--gray);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+  }
+  .issue.sev-high { border-left-color: var(--red); }
+  .issue.sev-medium { border-left-color: var(--amber); }
+  .issue.sev-low { border-left-color: var(--accent); }
+  .issue-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+  .issue-file { font-family: var(--mono); font-size: 12.5px; color: var(--text-dim); }
+  .issue-cat { font-size: 11px; color: var(--text-faint); text-transform: uppercase; letter-spacing: .03em; }
+  .issue-comment { font-size: 13.5px; margin-bottom: 6px; }
+  .issue-fix {
+    font-size: 12.5px;
+    color: var(--text-dim);
+    background: var(--surface-2);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-family: var(--mono);
+    white-space: pre-wrap;
+  }
+  .issue-commit { font-size: 11.5px; color: var(--text-faint); margin-top: 6px; font-family: var(--mono); }
+
+  .conflict { border-left-color: var(--red); }
+
+  /* commits + diffs */
+  .commit-card { margin-bottom: 12px; padding: 14px 16px; }
+  .commit-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 2px; }
+  .commit-sha { font-family: var(--mono); font-size: 12px; color: var(--accent); }
+  .commit-msg { font-weight: 600; }
+  .commit-sub { font-size: 12px; color: var(--text-faint); margin-bottom: 8px; }
+  .commit-file { margin-top: 10px; }
+  .commit-file-path {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .change-type {
+    font-size: 10px;
+    text-transform: uppercase;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--surface-2);
+    color: var(--text-faint);
+  }
+  pre.diff {
+    margin: 0;
+    padding: 10px 0;
+    background: var(--surface-2);
+    border-radius: 8px;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.55;
+  }
+  pre.diff .line { padding: 0 12px; white-space: pre; }
+  pre.diff .add { background: var(--diff-add); color: var(--diff-add-text); }
+  pre.diff .del { background: var(--diff-del); color: var(--diff-del-text); }
+  pre.diff .hunk { background: var(--diff-hunk); color: var(--diff-hunk-text); }
+  pre.diff .meta { color: var(--text-faint); }
+
+  /* reasoning trace */
+  .step { padding: 12px 14px; margin-bottom: 8px; }
+  .step-head { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+  .step-num {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-faint);
+    min-width: 18px;
+  }
+  .step-action {
+    font-family: var(--mono);
+    font-size: 12px;
+    background: var(--accent-bg);
+    color: var(--accent);
+    padding: 2px 8px;
+    border-radius: 5px;
+  }
+  .step-thought { flex: 1; font-size: 13px; color: var(--text-dim); }
+  .step-toggle { color: var(--text-faint); font-size: 11px; }
+  .step-body { display: none; margin-top: 10px; }
+  .step.open .step-body { display: block; }
+  .step-input, .step-obs {
+    font-family: var(--mono);
+    font-size: 12px;
+    background: var(--surface-2);
+    border-radius: 6px;
+    padding: 8px 10px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin-top: 6px;
+  }
+  .step-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .03em; color: var(--text-faint); margin-top: 8px; }
+
+  .state-msg {
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 13.5px;
+  }
+  .state-msg.error { color: var(--red); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="app">
+    <h1>PR Review Agent</h1>
+    <span class="sub" id="header-sub">pexgit &middot; multistep LLM review</span>
+  </header>
+  <main id="app"></main>
+</div>
+
+<script>
+const API = "";
+
+function escapeHtml(s) {
+  if (s === null || s === undefined) return "";
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function fmtDate(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return escapeHtml(iso);
+  return d.toLocaleString(undefined, { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function shortSha(sha) { return (sha || "").slice(0, 7); }
+
+function statusBadge(text) {
+  const cls = "status-" + String(text || "").toLowerCase();
+  return `<span class="badge ${cls}">${escapeHtml(text)}</span>`;
+}
+
+function sevBadge(sev) {
+  const cls = "sev-" + String(sev || "medium").toLowerCase();
+  return `<span class="badge ${cls}">${escapeHtml(sev)}</span>`;
+}
+
+function renderDiff(diffText) {
+  const lines = (diffText || "").split("\n");
+  const html = lines.map(line => {
+    let cls = "meta";
+    if (line.startsWith("+++") || line.startsWith("---")) cls = "meta";
+    else if (line.startsWith("+")) cls = "add";
+    else if (line.startsWith("-")) cls = "del";
+    else if (line.startsWith("@@")) cls = "hunk";
+    else if (line.startsWith("diff --git") || line.startsWith("index ") || line.startsWith("new file") || line.startsWith("deleted file")) cls = "meta";
+    else cls = "";
+    return `<div class="line ${cls}">${escapeHtml(line) || "&nbsp;"}</div>`;
+  }).join("");
+  return `<pre class="diff">${html}</pre>`;
+}
+
+async function apiGet(path) {
+  const res = await fetch(API + path);
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    const err = new Error(detail.detail || `Request failed (${res.status})`);
+    err.status = res.status;
+    throw err;
+  }
+  return res.json();
+}
+
+const app = document.getElementById("app");
+const headerSub = document.getElementById("header-sub");
+
+function setLoading(msg) {
+  app.innerHTML = `<div class="state-msg">${escapeHtml(msg || "Loading…")}</div>`;
+}
+
+function setError(msg) {
+  app.innerHTML = `<div class="state-msg error">${escapeHtml(msg)}</div>`;
+}
+
+async function renderList() {
+  headerSub.textContent = "pexgit · multistep LLM review";
+  setLoading("Loading pull requests…");
+  let prs;
+  try {
+    prs = await apiGet("/prs");
+  } catch (e) {
+    setError("Couldn't load PRs: " + e.message);
+    return;
+  }
+
+  if (!prs.length) {
+    app.innerHTML = `<div class="state-msg">No PRs ingested yet. Run <code>scripts/ingest_mock_data.py</code>.</div>`;
+    return;
+  }
+
+  const rows = prs.map(pr => {
+    const commitChips = pr.commits.slice(0, 6).map(c =>
+      `<span class="commit-chip" title="${escapeHtml(c.message)}">${shortSha(c.commit_sha)}</span>`
+    ).join("");
+    const more = pr.commits.length > 6 ? `<span class="commit-chip">+${pr.commits.length - 6} more</span>` : "";
+
+    return `
+      <a class="card pr-row" href="#/pr/${encodeURIComponent(pr.pexgit_pr_id)}">
+        <div class="pr-row-top">
+          <span class="pr-id">${escapeHtml(pr.pexgit_pr_id)}</span>
+          <span class="pr-title">${escapeHtml(pr.title)}</span>
+          ${statusBadge(pr.status)}
+          ${statusBadge(pr.review_status)}
+        </div>
+        <div class="pr-meta">
+          <span>${escapeHtml(pr.repository)}</span>
+          <span class="branch">${escapeHtml(pr.source_branch)}<span class="arrow">&rarr;</span>${escapeHtml(pr.target_branch)}</span>
+          <span>by ${escapeHtml(pr.author)}</span>
+          <span>${pr.commits.length} commit${pr.commits.length === 1 ? "" : "s"}</span>
+          <span>updated ${fmtDate(pr.updated_at)}</span>
+        </div>
+        <div class="commit-strip">${commitChips}${more}</div>
+      </a>`;
+  }).join("");
+
+  app.innerHTML = `<div class="pr-list">${rows}</div>`;
+}
+
+async function renderDetail(prId) {
+  headerSub.textContent = prId;
+  setLoading("Loading " + prId + "…");
+  let pr;
+  try {
+    pr = await apiGet("/prs/" + encodeURIComponent(prId));
+  } catch (e) {
+    if (e.status === 404) setError(`${prId} not found.`);
+    else setError("Couldn't load PR: " + e.message);
+    return;
+  }
+
+  const issues = [
+    ...pr.merge_conflicts.map(c => ({ ...c, __kind: "conflict" })),
+    ...pr.review_comments.map(c => ({ ...c, __kind: "comment" })),
+  ];
+
+  const commitsHtml = pr.commits.map(c => `
+    <div class="card commit-card">
+      <div class="commit-head">
+        <span class="commit-sha">${shortSha(c.commit_sha)}</span>
+        <span class="commit-msg">${escapeHtml(c.message)}</span>
+      </div>
+      <div class="commit-sub">${escapeHtml(c.author)} &middot; ${fmtDate(c.committed_at)}</div>
+      ${c.files.map(f => `
+        <div class="commit-file">
+          <div class="commit-file-path">
+            ${escapeHtml(f.file_path)}
+            <span class="change-type">${escapeHtml(f.change_type)}</span>
+          </div>
+          ${renderDiff(f.diff_text)}
+        </div>
+      `).join("")}
+    </div>
+  `).join("");
+
+  const issuesHtml = issues.length ? issues.map(i => {
+    if (i.__kind === "conflict") {
+      return `
+        <div class="issue conflict">
+          <div class="issue-top">
+            <span class="issue-file">${escapeHtml(i.file_path)}</span>
+            <span class="issue-cat">merge conflict</span>
+          </div>
+          <div class="issue-comment">${escapeHtml(i.detail)}</div>
+        </div>`;
+    }
+    return `
+      <div class="issue sev-${escapeHtml((i.severity || "medium").toLowerCase())}">
+        <div class="issue-top">
+          ${sevBadge(i.severity)}
+          <span class="issue-file">${escapeHtml(i.file_path)}${i.line_hint ? " · " + escapeHtml(i.line_hint) : ""}</span>
+          <span class="issue-cat">${escapeHtml(i.category)}</span>
+        </div>
+        <div class="issue-comment">${escapeHtml(i.comment)}</div>
+        ${i.suggested_fix ? `<div class="issue-fix">${escapeHtml(i.suggested_fix)}</div>` : ""}
+        ${i.introduced_in_commit ? `<div class="issue-commit">introduced in ${shortSha(i.introduced_in_commit)}</div>` : ""}
+      </div>`;
+  }).join("") : `<div class="empty-note">No issues found.</div>`;
+
+  const stepsHtml = pr.reasoning_steps.length ? pr.reasoning_steps.map(s => `
+    <div class="card step" data-step>
+      <div class="step-head" data-toggle>
+        <span class="step-num">#${s.step_number}</span>
+        <span class="step-action">${escapeHtml(s.action)}</span>
+        <span class="step-thought">${escapeHtml(s.thought || "")}</span>
+        <span class="step-toggle">▾</span>
+      </div>
+      <div class="step-body">
+        ${Object.keys(s.action_input || {}).length ? `
+          <div class="step-label">Action input</div>
+          <div class="step-input">${escapeHtml(JSON.stringify(s.action_input, null, 2))}</div>` : ""}
+        ${s.observation ? `
+          <div class="step-label">Observation</div>
+          <div class="step-obs">${escapeHtml(s.observation)}</div>` : ""}
+      </div>
+    </div>
+  `).join("") : `<div class="empty-note">No reasoning steps recorded.</div>`;
+
+  app.innerHTML = `
+    <a class="backlink" href="#/">&larr; All PRs</a>
+    <div class="card detail-header">
+      <span class="repo">${escapeHtml(pr.repository)}</span>
+      <h2>${escapeHtml(pr.title)}</h2>
+      <div class="detail-badges">${statusBadge(pr.status)}${statusBadge(pr.review_status)}</div>
+      ${pr.review_summary ? `
+        <div class="summary-box">
+          <div class="label">Agent summary</div>
+          ${escapeHtml(pr.review_summary)}
+        </div>` : ""}
+      <div class="detail-meta">
+        <div><strong>${escapeHtml(pr.pexgit_pr_id)}</strong>PR id</div>
+        <div><strong>${escapeHtml(pr.author)}</strong>author</div>
+        <div><strong>${escapeHtml(pr.source_branch)} &rarr; ${escapeHtml(pr.target_branch)}</strong>branch</div>
+        <div><strong>${fmtDate(pr.created_at)}</strong>created</div>
+        <div><strong>${fmtDate(pr.updated_at)}</strong>updated</div>
+        <div><strong>${pr.reviewed_at ? fmtDate(pr.reviewed_at) : "—"}</strong>reviewed</div>
+      </div>
+    </div>
+
+    <section class="block">
+      <h3>Issues &amp; merge conflicts <span class="count">${issues.length}</span></h3>
+      ${issuesHtml}
+    </section>
+
+    <section class="block">
+      <h3>Commits <span class="count">${pr.commits.length}</span></h3>
+      ${commitsHtml}
+    </section>
+
+    <section class="block">
+      <h3>Reasoning trace <span class="count">${pr.reasoning_steps.length}</span></h3>
+      ${stepsHtml}
+    </section>
+  `;
+
+  app.querySelectorAll("[data-toggle]").forEach(el => {
+    el.addEventListener("click", () => el.closest("[data-step]").classList.toggle("open"));
+  });
+}
+
+function route() {
+  const hash = location.hash || "#/";
+  const m = hash.match(/^#\/pr\/(.+)$/);
+  if (m) renderDetail(decodeURIComponent(m[1]));
+  else renderList();
+}
+
+window.addEventListener("hashchange", route);
+route();
+</script>
+</body>
+</html>

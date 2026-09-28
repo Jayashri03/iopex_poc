@@ -17,8 +17,9 @@ agent/            context_builder (assembles + size-guards the commit history),
                    reasoning (multistep ReAct loop), review_agent (entrypoint)
 scripts/          init_db.py (drop+recreate schema), ingest_mock_data.py (load PRs/commits into MySQL)
 jobs/             run_review.py - reviews already-ingested PRs, writes results -> MySQL
-api/              FastAPI app, read-only, serves what scripts/jobs already wrote
+api/              FastAPI app: 2 JSON endpoints (read-only) + serves frontend/ as static files
 db/               schema.sql, connection pooling, pr_repository.py (reconstructs a PR from MySQL rows)
+frontend/         single-file HTML/CSS/JS UI, no build step, talks to the API on the same origin
 ```
 
 Three separate steps, each owning one thing:
@@ -93,6 +94,7 @@ rather than being bolted on here.
 6. Load the mock PRs/commits into MySQL: `python scripts/ingest_mock_data.py`
 7. Run the agent over all ingested PRs and persist results: `python jobs/run_review.py`
 8. Start the API: `uvicorn api.main:app --reload`
+9. Open `http://127.0.0.1:8000/` — the frontend (see below).
 
 ## Endpoints
 
@@ -109,6 +111,24 @@ commit's id, author, message, and diff, read back from MySQL via `db/pr_reposito
 It is not hunk-level line context beyond the diff itself, and it is not the full content of
 every touched file by default - the agent can fetch a full file on demand via the `get_file`
 tool if a diff alone isn't enough, but nothing forces that on every review.
+
+## Frontend
+
+`frontend/index.html` is a single dependency-free file (vanilla HTML/CSS/JS, no npm/build step,
+no external CDN) that FastAPI serves directly at `/` via `StaticFiles` (see the bottom of
+`api/main.py` - it's mounted after the `/prs` routes, so those always win over the static
+fallback). It talks to `/prs` and `/prs/{id}` on the same origin, so there's no CORS config to
+maintain.
+
+- **List view** (`/`) — every PR as a card: status/review-status badges, repository, branch,
+  author, commit count, and a strip of commit-sha chips.
+- **Detail view** (`/#/pr/PR-101`, hash-routed so it's bookmarkable/shareable) — issues (merge
+  conflicts + review comments, color-coded by severity, showing suggested fixes and which commit
+  introduced each one), every commit with syntax-colored diffs (green additions, red deletions,
+  blue hunk headers), and the full reasoning trace as collapsible steps (thought / action / tool
+  input / observation).
+- Light/dark theme follows the OS via `prefers-color-scheme`. All PR/agent content is HTML-escaped
+  before rendering (diffs and comments are LLM/fixture text, not trusted markup).
 
 Mock PRs and what they demonstrate:
 - `PR-101` — 6 commits against a small `app/` package (`payments.py`, `orders.py`, `config.py`,

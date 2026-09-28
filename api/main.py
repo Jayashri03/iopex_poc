@@ -1,6 +1,8 @@
 import json
+import pathlib
 
 from fastapi import FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
 
 from api.schemas import (
     CommitBriefOut,
@@ -13,6 +15,8 @@ from api.schemas import (
     ReviewCommentOut,
 )
 from db.connection import get_cursor
+
+FRONTEND_DIR = pathlib.Path(__file__).resolve().parent.parent / "frontend"
 
 app = FastAPI(title="PR Review Agent (PoC)")
 
@@ -140,3 +144,8 @@ def get_pr_detail(pexgit_pr_id: str):
         review_comments=[ReviewCommentOut(**c) for c in comments],
         reasoning_steps=[ReasoningStepOut(**s) for s in steps],
     )
+
+
+# Mounted last, and at "/" - registered API routes above always win for their
+# exact paths, this only serves the frontend for everything else (including "/").
+app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
